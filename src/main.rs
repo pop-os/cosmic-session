@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
+#[macro_use]
+extern crate tracing;
+
+mod process;
+
 use color_eyre::{eyre::WrapErr, Result};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -15,7 +20,9 @@ async fn main() -> Result<()> {
 				.from_env_lossy(),
 		)
 		.try_init()
-		.wrap_err("failed to initialize logger")?;
+		.wrap_err("failed to ianitialize logger")?;
+
+	info!("Starting cosmic-session");
 
 	Ok(())
 }

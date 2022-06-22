@@ -8,7 +8,9 @@ authors = ["Lucy <lucy@system76.com>"]
 publish = false
 
 [dependencies]
-color-eyre = "0.6.1"
+async-signals = "0.4"
+color-eyre = "0.6"
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
