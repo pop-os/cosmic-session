@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
 				.from_env_lossy(),
 		)
 		.try_init()
-		.wrap_err("failed to ianitialize logger")?;
+		.wrap_err("failed to initialize logger")?;
 
 	info!("Starting cosmic-session");
 
