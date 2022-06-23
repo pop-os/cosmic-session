@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use std::{
-	future::Future,
-	process::{ExitStatus, Stdio},
-};
+use std::process::{ExitStatus, Stdio};
 use tokio::{
 	io::{AsyncBufReadExt, BufReader},
 	process::Command,
+	sync::mpsc::UnboundedSender,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -13,26 +11,18 @@ pub enum ProcessEvent {
 	Started,
 	Stdout(String),
 	Stderr(String),
-	Ended { status: ExitStatus },
+	Ended(Option<ExitStatus>),
 }
 
-pub struct ProcessHandler<AsyncTask, Task>
-where
-	AsyncTask: Future<Output = ()> + Send,
-	Task: Fn(ProcessEvent) -> AsyncTask + Send + 'static,
-{
-	task: Task,
+pub struct ProcessHandler {
+	tx: UnboundedSender<ProcessEvent>,
 	cancellation_token: CancellationToken,
 }
 
-impl<AsyncTask, Task> ProcessHandler<AsyncTask, Task>
-where
-	AsyncTask: Future<Output = ()> + Send,
-	Task: Fn(ProcessEvent) -> AsyncTask + Send + 'static,
-{
-	pub fn new(task: Task, cancellation_token: &CancellationToken) -> Self {
+impl ProcessHandler {
+	pub fn new(tx: UnboundedSender<ProcessEvent>, cancellation_token: &CancellationToken) -> Self {
 		Self {
-			task,
+			tx,
 			cancellation_token: cancellation_token.child_token(),
 		}
 	}
@@ -61,15 +51,13 @@ where
 			};
 			let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
 			let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
-			let task = (self.task)(ProcessEvent::Started);
-			task.await;
+			std::mem::drop(self.tx.send(ProcessEvent::Started));
 			loop {
 				tokio::select! {
 					status = child.wait() => match status {
 						Ok(status) => {
 							info!("'{}' exited with status {}", executable, status);
-							let task = (self.task)(ProcessEvent::Ended { status });
-							task.await;
+							std::mem::drop(self.tx.send(ProcessEvent::Ended(Some(status))));
 							return;
 						}
 						Err(error) => {
@@ -83,8 +71,7 @@ where
 					},
 					line = stdout.next_line() => match line {
 						Ok(Some(line)) => {
-							let task = (self.task)(ProcessEvent::Stdout(line));
-							task.await;
+							std::mem::drop(self.tx.send(ProcessEvent::Stdout(line)));
 						},
 						Ok(None) => (),
 						Err(error) => {
@@ -97,8 +84,7 @@ where
 					},
 					line = stderr.next_line() => match line {
 						Ok(Some(line)) => {
-							let task = (self.task)(ProcessEvent::Stderr(line));
-							task.await;
+							std::mem::drop(self.tx.send(ProcessEvent::Stderr(line)));
 						},
 						Ok(None) => (),
 						Err(error) => {
@@ -111,6 +97,7 @@ where
 					},
 					_ = self.cancellation_token.cancelled() => {
 						warn!("exiting '{}': cancelled", executable);
+						std::mem::drop(self.tx.send(ProcessEvent::Ended(None)));
 						return;
 					}
 				}
