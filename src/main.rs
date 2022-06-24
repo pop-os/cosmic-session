@@ -40,6 +40,12 @@ async fn main() -> Result<()> {
 
 	tokio::spawn(panel::run_panel(
 		token.child_token(),
+		"testing-panel",
+		wayland_socket.clone(),
+	));
+	tokio::spawn(panel::run_panel(
+		token.child_token(),
+		"testing-dock",
 		wayland_socket.clone(),
 	));
 
