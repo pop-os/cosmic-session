@@ -37,9 +37,11 @@ async fn main() -> Result<()> {
 		.await
 		.expect("failed to get WAYLAND_SOCKET");
 	info!("got WAYLAND_SOCKET: {}", wayland_socket);
-	std::env::set_var("WAYLAND_SOCKET", wayland_socket);
 
-	tokio::spawn(panel::run_panel(token.child_token()));
+	tokio::spawn(panel::run_panel(
+		token.child_token(),
+		wayland_socket.clone(),
+	));
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	while let Some(signal) = signals.next().await {

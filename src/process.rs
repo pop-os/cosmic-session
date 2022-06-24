@@ -27,7 +27,7 @@ impl ProcessHandler {
 		}
 	}
 
-	pub fn run(self, executable: impl ToString, args: Vec<String>) {
+	pub fn run(self, executable: impl ToString, args: Vec<String>, vars: Vec<(String, String)>) {
 		let executable = executable.to_string();
 		tokio::spawn(async move {
 			let mut child = match Command::new(&executable)
@@ -35,6 +35,7 @@ impl ProcessHandler {
 				.stdin(Stdio::null())
 				.stdout(Stdio::piped())
 				.stderr(Stdio::piped())
+				.envs(vars)
 				.kill_on_drop(true)
 				.spawn()
 			{

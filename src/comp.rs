@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 pub async fn run_compositor(token: CancellationToken, wayland_socket_tx: oneshot::Sender<String>) {
 	let mut wayland_socket_tx = Some(wayland_socket_tx);
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
-	ProcessHandler::new(tx, &token).run("cosmic-comp", vec![]);
+	ProcessHandler::new(tx, &token).run("cosmic-comp", vec![], vec![]);
 	let span = info_span!("cosmic-comp");
 	let _enter = span.enter();
 	while let Some(event) = rx.recv().await {
