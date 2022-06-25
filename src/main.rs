@@ -31,22 +31,25 @@ async fn main() -> Result<()> {
 	info!("Starting cosmic-session");
 
 	let token = CancellationToken::new();
-	let (wayland_socket_tx, wayland_socket_rx) = oneshot::channel();
-	tokio::spawn(comp::run_compositor(token.child_token(), wayland_socket_tx));
-	let wayland_socket = wayland_socket_rx
+	let (wayland_display_tx, wayland_display_rx) = oneshot::channel();
+	tokio::spawn(comp::run_compositor(
+		token.child_token(),
+		wayland_display_tx,
+	));
+	let wayland_display = wayland_display_rx
 		.await
-		.expect("failed to get WAYLAND_SOCKET");
-	info!("got WAYLAND_SOCKET: {}", wayland_socket);
+		.expect("failed to get WAYLAND_DISPLAY");
+	info!("got WAYLAND_DISPLAY: {}", wayland_display);
 
 	tokio::spawn(panel::run_panel(
 		token.child_token(),
 		"testing-panel",
-		wayland_socket.clone(),
+		wayland_display.clone(),
 	));
 	tokio::spawn(panel::run_panel(
 		token.child_token(),
 		"testing-dock",
-		wayland_socket.clone(),
+		wayland_display.clone(),
 	));
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
