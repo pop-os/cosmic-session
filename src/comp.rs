@@ -1,12 +1,22 @@
+use std::os::unix::prelude::IntoRawFd;
+
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::process::{ProcessEvent, ProcessHandler};
-use tokio::sync::{mpsc::unbounded_channel, oneshot};
+use tokio::{
+	net::UnixStream,
+	sync::{mpsc::unbounded_channel, oneshot},
+};
 use tokio_util::sync::CancellationToken;
 
 pub async fn run_compositor(token: CancellationToken, wayland_display_tx: oneshot::Sender<String>) {
 	let mut wayland_display_tx = Some(wayland_display_tx);
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
-	ProcessHandler::new(tx, &token).run("cosmic-comp", vec![], vec![]);
+	let (session, comp) = UnixStream::pair().expect("failed to create pair of unix sockets");
+	let comp = comp.into_std().unwrap().into_raw_fd();
+	ProcessHandler::new(tx, &token).run("cosmic-comp", vec![], vec![(
+		"COSMIC_SESSION_SOCK".into(),
+		comp.to_string(),
+	)]);
 	while let Some(event) = rx.recv().await {
 		match event {
 			ProcessEvent::Started => {
