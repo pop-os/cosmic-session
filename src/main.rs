@@ -9,7 +9,7 @@ mod process;
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use futures_util::StreamExt;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -32,7 +32,8 @@ async fn main() -> Result<()> {
 
 	let token = CancellationToken::new();
 	let (env_tx, env_rx) = oneshot::channel();
-	tokio::spawn(comp::run_compositor(token.child_token(), env_tx));
+	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
+	tokio::spawn(comp::run_compositor(token.child_token(), socket_rx, env_tx));
 	let env_vars = env_rx
 		.await
 		.expect("failed to receive environmental variables");
