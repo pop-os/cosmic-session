@@ -3,12 +3,9 @@ use crate::process::{ProcessEvent, ProcessHandler};
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
 
-pub async fn run_panel(token: CancellationToken, config: &str, wayland_display: String) {
+pub async fn run_panel(token: CancellationToken, config: &str, env_vars: Vec<(String, String)>) {
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
-	ProcessHandler::new(tx, &token).run("cosmic-panel", vec![config.to_string()], vec![(
-		"WAYLAND_DISPLAY".into(),
-		wayland_display,
-	)]);
+	ProcessHandler::new(tx, &token).run("cosmic-panel", vec![config.to_string()], env_vars);
 	while let Some(event) = rx.recv().await {
 		match event {
 			ProcessEvent::Started => {

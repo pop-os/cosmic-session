@@ -1,16 +1,23 @@
-use std::os::unix::prelude::IntoRawFd;
-
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::process::{ProcessEvent, ProcessHandler};
+use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, os::unix::prelude::IntoRawFd};
 use tokio::{
 	io::{AsyncBufReadExt, BufReader, Lines},
-	net::UnixStream,
+	net::{unix::ReadHalf, UnixStream},
 	sync::{
 		mpsc::{self, unbounded_channel},
 		oneshot,
 	},
 };
 use tokio_util::sync::CancellationToken;
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "message")]
+pub enum Message {
+	SetEnv { variables: HashMap<String, String> },
+	NewPrivilegedClient { fd: u32 },
+}
 
 async fn receive_event(rx: &mut mpsc::UnboundedReceiver<ProcessEvent>) -> Option<()> {
 	match rx.recv().await? {
@@ -34,20 +41,38 @@ async fn receive_event(rx: &mut mpsc::UnboundedReceiver<ProcessEvent>) -> Option
 	}
 }
 
-async fn receive_ipc(rx: &mut Lines<BufReader<UnixStream>>) -> Option<()> {
+async fn receive_ipc(
+	rx: &mut Lines<BufReader<ReadHalf<'_>>>,
+	env_tx: &mut Option<oneshot::Sender<Vec<(String, String)>>>,
+) -> Option<()> {
 	let line = rx
 		.next_line()
 		.await
 		.expect("failed to get next line of ipc")?;
-	let message = serde_json::from_str::<()>(&line).expect("invalid message from cosmic-comp");
+	match serde_json::from_str::<Message>(&line).expect("invalid message from cosmic-comp") {
+		Message::SetEnv { variables } => {
+			if let Some(env_tx) = env_tx.take() {
+				env_tx
+					.send(variables.into_iter().collect())
+					.expect("failed to send environmental variables");
+			}
+		}
+		Message::NewPrivilegedClient { fd } => {
+			unreachable!("compositor should not send NewPrivilegedClient")
+		}
+	}
 	Some(())
 }
 
-pub async fn run_compositor(token: CancellationToken, wayland_display_tx: oneshot::Sender<String>) {
-	let mut wayland_display_tx = Some(wayland_display_tx);
+pub async fn run_compositor(
+	token: CancellationToken,
+	env_tx: oneshot::Sender<Vec<(String, String)>>,
+) {
+	let mut env_tx = Some(env_tx);
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
-	let (session, comp) = UnixStream::pair().expect("failed to create pair of unix sockets");
-	let mut session = BufReader::new(session).lines();
+	let (mut session, comp) = UnixStream::pair().expect("failed to create pair of unix sockets");
+	let (session_rx, session_tx) = session.split();
+	let mut session = BufReader::new(session_rx).lines();
 	let comp = {
 		let std_stream = comp
 			.into_std()
@@ -66,7 +91,7 @@ pub async fn run_compositor(token: CancellationToken, wayland_display_tx: onesho
 			exit = receive_event(&mut rx) => if exit.is_none() {
 				break;
 			},
-			exit = receive_ipc(&mut session) => if exit.is_none() {
+			exit = receive_ipc(&mut session, &mut env_tx) => if exit.is_none() {
 				break;
 			}
 		}
