@@ -12,6 +12,7 @@ async-signals = "0.4"
 color-eyre = "0.6"
 futures-util = "0.3"
 libc = "0.2"
+nix = { version = "0.24.1", features = ["fs"], default-features = false }
 sendfd = { version = "0.4.1", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

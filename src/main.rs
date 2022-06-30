@@ -41,9 +41,11 @@ async fn main() -> Result<()> {
 			}
 		}
 	});
-	let env_vars = env_rx
-		.await
-		.expect("failed to receive environmental variables");
+	// let env_vars = env_rx
+	// .await
+	// .expect("failed to receive environmental variables");
+	tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+	let env_vars = Vec::new();
 	info!("got environmental variables: {:?}", env_vars);
 
 	let mut sockets = Vec::with_capacity(2);

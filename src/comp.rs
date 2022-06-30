@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::process::{ProcessEvent, ProcessHandler};
 use color_eyre::eyre::{ContextCompat, Result, WrapErr};
+use nix::fcntl;
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, os::unix::prelude::IntoRawFd};
+use std::{
+	collections::HashMap,
+	os::unix::prelude::{AsRawFd, IntoRawFd},
+};
 use tokio::{
 	io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
 	net::{
@@ -24,6 +28,21 @@ pub enum Message {
 	NewPrivilegedClient { count: usize },
 }
 
+fn mark_as_cloexec(stream: &UnixStream) -> Result<()> {
+	let raw_fd = stream.as_raw_fd();
+	let fd_flags = fcntl::FdFlag::from_bits(
+		fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)
+			.wrap_err("failed to get GETFD value of stream")?,
+	)
+	.wrap_err("failed to get fd flags from file")?;
+	fcntl::fcntl(
+		raw_fd,
+		fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
+	)
+	.wrap_err("failed to set CLOEXEC on file")?;
+	Ok(())
+}
+
 pub fn create_privileged_socket(
 	sockets: &mut Vec<UnixStream>,
 	env_vars: &[(String, String)],
@@ -32,6 +51,7 @@ pub fn create_privileged_socket(
 		UnixStream::pair().wrap_err("failed to create socket pair")?;
 	sockets.push(comp_socket);
 	let client_fd = {
+		mark_as_cloexec(&client_socket).wrap_err("failed to mark client stream as CLOEXEC")?;
 		let std_stream = client_socket
 			.into_std()
 			.wrap_err("failed to convert client socket to std socket")?;
@@ -98,6 +118,7 @@ async fn send_fd(session_tx: &mut WriteHalf<'_>, stream: Vec<UnixStream>) -> Res
 	let fds = stream
 		.into_iter()
 		.map(|stream| {
+			mark_as_cloexec(&stream).wrap_err("failed to mark stream as CLOEXEC")?;
 			let std_stream = stream
 				.into_std()
 				.wrap_err("failed to convert stream to std stream")?;
@@ -118,8 +139,10 @@ async fn send_fd(session_tx: &mut WriteHalf<'_>, stream: Vec<UnixStream>) -> Res
 		.write_all(b"\n")
 		.await
 		.wrap_err("failed to write newline")?;
+	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
 	let tx: &UnixStream = session_tx.as_ref();
-	tx.send_with_fd(&[], &fds).wrap_err("failed to send fd")?;
+	tx.send_with_fd(&[0], &fds).wrap_err("failed to send fd")?;
+	info!("sent {} fds", fds.len());
 	Ok(())
 }
 
@@ -135,6 +158,7 @@ pub async fn run_compositor(
 	let (session_rx, mut session_tx) = session.split();
 	let mut session = BufReader::new(session_rx).lines();
 	let comp = {
+		mark_as_cloexec(&comp).wrap_err("failed to mark compositor stream as CLOEXEC")?;
 		let std_stream = comp
 			.into_std()
 			.wrap_err("failed to convert compositor unix stream to a standard unix stream")?;
