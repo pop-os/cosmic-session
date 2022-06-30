@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 #[serde(rename_all = "snake_case", tag = "message")]
 pub enum Message {
 	SetEnv { variables: HashMap<String, String> },
-	NewPrivilegedClient,
+	NewPrivilegedClient { count: usize },
 }
 
 pub fn create_privileged_socket(
@@ -87,7 +87,7 @@ async fn receive_ipc(
 					.expect("failed to send environmental variables");
 			}
 		}
-		Message::NewPrivilegedClient => {
+		Message::NewPrivilegedClient { .. } => {
 			unreachable!("compositor should not send NewPrivilegedClient")
 		}
 	}
@@ -108,8 +108,8 @@ async fn send_fd(session_tx: &mut WriteHalf<'_>, stream: Vec<UnixStream>) -> Res
 		})
 		.collect::<Result<Vec<_>>>()
 		.wrap_err("failed to convert streams to file descriptors")?;
-	let json =
-		serde_json::to_string(&Message::NewPrivilegedClient).wrap_err("failed to encode json")?;
+	let json = serde_json::to_string(&Message::NewPrivilegedClient { count: fds.len() })
+		.wrap_err("failed to encode json")?;
 	session_tx
 		.write_all(json.as_bytes())
 		.await
