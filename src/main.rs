@@ -33,22 +33,35 @@ async fn main() -> Result<()> {
 	let token = CancellationToken::new();
 	let (env_tx, env_rx) = oneshot::channel();
 	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
-	tokio::spawn(comp::run_compositor(token.child_token(), socket_rx, env_tx));
+	tokio::spawn({
+		let token = token.child_token();
+		async move {
+			if let Err(err) = comp::run_compositor(token, socket_rx, env_tx).await {
+				error!("compositor errored: {:?}", err);
+			}
+		}
+	});
 	let env_vars = env_rx
 		.await
 		.expect("failed to receive environmental variables");
 	info!("got environmental variables: {:?}", env_vars);
 
+	let mut sockets = Vec::with_capacity(2);
+
 	tokio::spawn(panel::run_panel(
 		token.child_token(),
 		"testing-panel",
-		env_vars.clone(),
+		comp::create_privileged_socket(&mut sockets, &env_vars)
+			.wrap_err("failed to create panel socket")?,
 	));
 	tokio::spawn(panel::run_panel(
 		token.child_token(),
 		"testing-dock",
-		env_vars.clone(),
+		comp::create_privileged_socket(&mut sockets, &env_vars)
+			.wrap_err("failed to create dock socket")?,
 	));
+
+	socket_tx.send(sockets).unwrap();
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	while let Some(signal) = signals.next().await {
