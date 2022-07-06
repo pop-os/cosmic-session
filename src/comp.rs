@@ -132,13 +132,13 @@ async fn send_fd(session_tx: &mut WriteHalf<'_>, stream: Vec<UnixStream>) -> Res
 	let json = serde_json::to_string(&Message::NewPrivilegedClient { count: fds.len() })
 		.wrap_err("failed to encode json")?;
 	session_tx
+		.write_all(&(json.len() as u16).to_le_bytes())
+		.await
+		.wrap_err("failed to write length")?;
+	session_tx
 		.write_all(json.as_bytes())
 		.await
 		.wrap_err("failed to write json")?;
-	session_tx
-		.write_all(b"\n")
-		.await
-		.wrap_err("failed to write newline")?;
 	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
 	let tx: &UnixStream = session_tx.as_ref();
 	tx.send_with_fd(&[0], &fds).wrap_err("failed to send fd")?;
