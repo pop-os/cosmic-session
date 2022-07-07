@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
 
-DESTDIR = debian/pop-snapshot
+DESTDIR = debian/cosmic-session
 CLEAN ?= 1
 VENDOR ?= 1
 
