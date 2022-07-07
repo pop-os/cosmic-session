@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=COSMIC
+Comment=This session logs you into the COSMIC desktop
+Exec=/usr/bin/dbus-run-session -- /usr/bin/cosmic-session
+TryExec=/usr/bin/gnome-shell
+Type=Application
+DesktopNames=pop:COSMIC

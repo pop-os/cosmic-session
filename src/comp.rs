@@ -4,17 +4,25 @@ use color_eyre::eyre::{ContextCompat, Result, WrapErr};
 use nix::fcntl;
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
-use std::os::unix::prelude::{AsRawFd, IntoRawFd};
+use std::{
+	collections::HashMap,
+	os::unix::prelude::{AsRawFd, IntoRawFd},
+};
 use tokio::{
-	io::AsyncWriteExt,
-	net::UnixStream,
+	io::{AsyncReadExt, AsyncWriteExt},
+	net::{
+		unix::{OwnedReadHalf, OwnedWriteHalf},
+		UnixStream,
+	},
 	sync::mpsc::{self, unbounded_channel},
 };
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "message")]
 pub enum Message {
+	SetEnv { variables: HashMap<String, String> },
 	NewPrivilegedClient { count: usize },
 }
 
@@ -77,7 +85,70 @@ async fn receive_event(rx: &mut mpsc::UnboundedReceiver<ProcessEvent>) -> Option
 	}
 }
 
-async fn send_fd(session_tx: &mut UnixStream, stream: Vec<UnixStream>) -> Result<()> {
+// Cancellation safe!
+#[derive(Default)]
+struct IpcState {
+	length: Option<u16>,
+	bytes_read: usize,
+	buf: Vec<u8>,
+}
+
+fn parse_and_handle_ipc(bytes: &[u8]) {
+	match serde_json::from_slice::<Message>(bytes) {
+		Ok(Message::SetEnv { variables }) => {
+			debug!(?variables);
+		}
+		Ok(Message::NewPrivilegedClient { .. }) => {
+			unreachable!("NewPrivilegedClient should not be sent TO the session!");
+		}
+		Err(_) => {
+			warn!(
+				"Unknown session socket message, are you using incompatible cosmic-session and \
+				 cosmic-comp versions?"
+			)
+		}
+	}
+}
+
+async fn receive_ipc(state: &mut IpcState, rx: &mut OwnedReadHalf) -> Result<()> {
+	match state.length {
+		Some(length) => {
+			let index = state.bytes_read.saturating_sub(1);
+			state.bytes_read += rx
+				.read_exact(&mut state.buf[index..])
+				.await
+				.wrap_err("failed to read IPC length")?;
+			if state.bytes_read >= length as usize {
+				parse_and_handle_ipc(&state.buf);
+				state.length = None;
+				state.bytes_read = 0;
+				state.buf.clear();
+			}
+			Ok(())
+		}
+		None => {
+			state.buf.resize(2, 0);
+			let index = state.bytes_read.saturating_sub(1);
+			state.bytes_read += rx
+				.read_exact(&mut state.buf[index..])
+				.await
+				.wrap_err("failed to read IPC length")?;
+			if state.bytes_read >= 2 {
+				let length = u16::from_ne_bytes(
+					state.buf[..2]
+						.try_into()
+						.wrap_err("failed to convert IPC length to u16")?,
+				);
+				state.length = Some(length);
+				state.bytes_read = 0;
+				state.buf.resize(length as usize, 0);
+			}
+			Ok(())
+		}
+	}
+}
+
+async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Result<()> {
 	let fds = stream
 		.into_iter()
 		.map(|stream| {
@@ -103,20 +174,19 @@ async fn send_fd(session_tx: &mut UnixStream, stream: Vec<UnixStream>) -> Result
 		.await
 		.wrap_err("failed to write json")?;
 	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
-	session_tx
-		.send_with_fd(&[0], &fds)
-		.wrap_err("failed to send fd")?;
+	let fd: &UnixStream = session_tx.as_ref();
+	fd.send_with_fd(&[0], &fds).wrap_err("failed to send fd")?;
 	info!("sent {} fds", fds.len());
 	Ok(())
 }
 
-pub async fn run_compositor(
+pub fn run_compositor(
 	token: CancellationToken,
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 ) -> Result<()> {
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
-	let (mut session, comp) =
-		UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
+	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
+	let (mut session_rx, mut session_tx) = session.into_split();
 	let comp = {
 		mark_as_not_cloexec(&comp).wrap_err("failed to mark compositor stream as CLOEXEC")?;
 		let std_stream = comp
@@ -127,21 +197,35 @@ pub async fn run_compositor(
 			.wrap_err("failed to mark compositor unix stream as blocking")?;
 		std_stream.into_raw_fd()
 	};
-	ProcessHandler::new(tx, &token).run("cosmic-comp", vec![], vec![(
-		"COSMIC_SESSION_SOCK".into(),
-		comp.to_string(),
-	)]);
-	loop {
-		tokio::select! {
-			exit = receive_event(&mut rx) => if exit.is_none() {
-				break;
-			},
-			Some(socket) = socket_rx.recv() => {
-				send_fd(&mut session, socket)
-					.await
-					.wrap_err("failed to send file descriptor to compositor")?;
+	let span = info_span!(parent: None, "cosmic-comp");
+	let _span = span.clone();
+	tokio::spawn(
+		async move {
+			ProcessHandler::new(tx, &token).run(
+				"cosmic-comp",
+				vec![],
+				vec![("COSMIC_SESSION_SOCK".into(), comp.to_string())],
+				&span,
+			);
+			let mut ipc_state = IpcState::default();
+			loop {
+				tokio::select! {
+					exit = receive_event(&mut rx) => if exit.is_none() {
+						break;
+					},
+					result = receive_ipc(&mut ipc_state, &mut session_rx) => if let Err(err) = result {
+						error!("failed to receive IPC: {:?}", err);
+					},
+					Some(socket) = socket_rx.recv() => {
+						send_fd(&mut session_tx, socket)
+							.await
+							.wrap_err("failed to send file descriptor to compositor")?;
+					}
+				}
 			}
+			Result::<()>::Ok(())
 		}
-	}
+		.instrument(_span),
+	);
 	Ok(())
 }

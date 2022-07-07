@@ -3,7 +3,7 @@
 extern crate tracing;
 
 mod comp;
-mod panel;
+mod generic;
 mod process;
 
 use async_signals::Signals;
@@ -32,32 +32,39 @@ async fn main() -> Result<()> {
 
 	let token = CancellationToken::new();
 	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
-	tokio::spawn({
-		let token = token.child_token();
-		async move {
-			if let Err(err) = comp::run_compositor(token, socket_rx).await {
-				error!("compositor errored: {:?}", err);
-			}
-		}
-	});
+	if let Err(err) = comp::run_compositor(token.child_token(), socket_rx) {
+		error!("compositor errored: {:?}", err);
+	}
 	tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 	let env_vars = Vec::new();
 	info!("got environmental variables: {:?}", env_vars);
 
 	let mut sockets = Vec::with_capacity(2);
 
-	tokio::spawn(panel::run_panel(
+	generic::run_executable(
 		token.child_token(),
-		"testing-panel",
+		info_span!(parent: None, "cosmic-panel"),
+		"cosmic-panel",
+		vec!["testing-panel".into()],
 		comp::create_privileged_socket(&mut sockets, &env_vars)
 			.wrap_err("failed to create panel socket")?,
-	));
-	tokio::spawn(panel::run_panel(
+	);
+	generic::run_executable(
 		token.child_token(),
-		"testing-dock",
+		info_span!(parent: None, "cosmic-panel dock"),
+		"cosmic-panel",
+		vec!["testing-dock".into()],
 		comp::create_privileged_socket(&mut sockets, &env_vars)
 			.wrap_err("failed to create dock socket")?,
-	));
+	);
+	generic::run_executable(
+		token.child_token(),
+		info_span!(parent: None, "cosmic-app-library"),
+		"cosmic-app-library",
+		vec![],
+		comp::create_privileged_socket(&mut sockets, &env_vars)
+			.wrap_err("failed to create dock socket")?,
+	);
 
 	socket_tx.send(sockets).unwrap();
 
