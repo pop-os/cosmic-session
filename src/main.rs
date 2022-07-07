@@ -57,15 +57,6 @@ async fn main() -> Result<()> {
 		comp::create_privileged_socket(&mut sockets, &env_vars)
 			.wrap_err("failed to create dock socket")?,
 	);
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "cosmic-app-library"),
-		"cosmic-app-library",
-		vec![],
-		comp::create_privileged_socket(&mut sockets, &env_vars)
-			.wrap_err("failed to create dock socket")?,
-	);
-
 	socket_tx.send(sockets).unwrap();
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
