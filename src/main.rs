@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
 	color_eyre::install().wrap_err("failed to install color_eyre error handler")?;
 
 	tracing_subscriber::registry()
+		.with(tracing_journald::layer().wrap_err("failed to connect to journald")?)
 		.with(fmt::layer())
 		.with(
 			EnvFilter::builder()
