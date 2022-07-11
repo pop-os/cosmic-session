@@ -9,7 +9,7 @@ mod process;
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use futures_util::StreamExt;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -32,11 +32,15 @@ async fn main() -> Result<()> {
 
 	let token = CancellationToken::new();
 	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
-	if let Err(err) = comp::run_compositor(token.child_token(), socket_rx) {
+	let (env_tx, env_rx) = oneshot::channel();
+	if let Err(err) = comp::run_compositor(token.child_token(), socket_rx, env_tx) {
 		error!("compositor errored: {:?}", err);
 	}
-	tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-	let env_vars = Vec::new();
+	let env_vars = env_rx
+		.await
+		.expect("failed to receive environmental variables")
+		.into_iter()
+		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
 	let mut sockets = Vec::with_capacity(2);
