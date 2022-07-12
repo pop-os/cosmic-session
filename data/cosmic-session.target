@@ -1,0 +1,5 @@
+[Unit]
+Description=Cosmic Session Target
+Documentation=man:systemd.special(7)
+BindsTo=graphical-session.target
+Before=graphical-session.target

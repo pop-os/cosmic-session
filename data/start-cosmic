@@ -1,0 +1,28 @@
+#!/bin/bash
+
+# From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
+
+# robustness: if the previous graphical session left some failed units,
+# reset them so that they don't break this startup
+for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f1 -d' '); do
+    partof="$(systemctl --user show -p PartOf --value "$unit")"
+    for target in cosmic-session.target graphical-session.target; do
+        if [ "$partof" = "$target" ]; then
+            systemctl --user reset-failed "$unit"
+            break
+        fi
+    done
+done
+
+# /etc/profile contains a lot of important environment variables
+source /etc/profile
+
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:=pop:COSMIC}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:=wayland}"
+export XCURSOR_THEME="${XCURSOR_THEME:=Adwaita}"
+
+# import environment variables from the login manager
+systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP
+
+# Run cosmic-session
+exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session

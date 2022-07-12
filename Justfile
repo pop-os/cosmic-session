@@ -10,6 +10,7 @@ debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
 
 bindir := prefix + '/bin'
+systemddir := prefix + '/lib/systemd/user'
 sessiondir := prefix + '/share/wayland-sessions'
 
 all: _extract_vendor
@@ -22,6 +23,12 @@ install:
 
 	# session desktop file
 	install -Dm0644 data/cosmic.desktop {{sessiondir}}/cosmic.desktop
+
+	# session start script
+	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
+	
+	# systemd target
+	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target
 
 clean_vendor:
 	rm -rf vendor vendor.tar .cargo/config

@@ -5,6 +5,7 @@ extern crate tracing;
 mod comp;
 mod generic;
 mod process;
+mod systemd;
 
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
@@ -37,6 +38,9 @@ async fn main() -> Result<()> {
 	if let Err(err) = comp::run_compositor(token.child_token(), socket_rx, env_tx) {
 		error!("compositor errored: {:?}", err);
 	}
+	systemd::start_systemd_target()
+		.await
+		.wrap_err("failed to start systemd target")?;
 	let env_vars = env_rx
 		.await
 		.expect("failed to receive environmental variables")
