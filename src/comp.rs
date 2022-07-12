@@ -18,6 +18,7 @@ use tokio::{
 		mpsc::{self, unbounded_channel},
 		oneshot,
 	},
+	task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
@@ -190,7 +191,7 @@ pub fn run_compositor(
 	token: CancellationToken,
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
-) -> Result<()> {
+) -> Result<JoinHandle<Result<()>>> {
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
 	let (mut session_rx, mut session_tx) = session.into_split();
@@ -206,7 +207,7 @@ pub fn run_compositor(
 	};
 	let span = info_span!(parent: None, "cosmic-comp");
 	let _span = span.clone();
-	tokio::spawn(
+	Ok(tokio::spawn(
 		async move {
 			ProcessHandler::new(tx, &token).run(
 				"cosmic-comp",
@@ -236,6 +237,5 @@ pub fn run_compositor(
 			Result::<()>::Ok(())
 		}
 		.instrument(_span),
-	);
-	Ok(())
+	))
 }

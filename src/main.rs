@@ -35,9 +35,8 @@ async fn main() -> Result<()> {
 	let token = CancellationToken::new();
 	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
-	if let Err(err) = comp::run_compositor(token.child_token(), socket_rx, env_tx) {
-		error!("compositor errored: {:?}", err);
-	}
+	let compositor_handle = comp::run_compositor(token.child_token(), socket_rx, env_tx)
+		.wrap_err("failed to start compositor")?;
 	systemd::start_systemd_target()
 		.await
 		.wrap_err("failed to start systemd target")?;
@@ -69,17 +68,23 @@ async fn main() -> Result<()> {
 	socket_tx.send(sockets).unwrap();
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
-	while let Some(signal) = signals.next().await {
-		match signal {
-			libc::SIGTERM | libc::SIGINT => {
-				info!("received request to terminate");
-				token.cancel();
-				tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+	loop {
+		tokio::select! {
+			_ = compositor_handle => {
+				info!("compositor exited");
 				break;
+			},
+			signal = signals.next() => match signal {
+				Some(libc::SIGTERM | libc::SIGINT) => {
+					info!("received request to terminate");
+					break;
+				}
+				Some(signal) => unreachable!("received unhandled signal {}", signal),
+				None => break,
 			}
-			_ => unreachable!("received unhandled signal {}", signal),
 		}
 	}
-
+	token.cancel();
+	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(())
 }
