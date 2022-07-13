@@ -25,4 +25,8 @@ export XCURSOR_THEME="${XCURSOR_THEME:=Adwaita}"
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP
 
 # Run cosmic-session
-exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
+if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
+    exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
+else
+    exec /usr/bin/cosmic-session
+fi
