@@ -1,28 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use color_eyre::{
-	eyre::{eyre, WrapErr},
-	Result,
-};
-use tokio::process::Command;
+use color_eyre::{eyre::WrapErr, Result};
 
 pub async fn start_systemd_target() -> Result<()> {
-	let output = Command::new("systemctl")
-		.arg("--user")
-		.arg("start")
-		.arg("cosmic-session.target")
-		.spawn()
-		.wrap_err("failed to start systemd target")?
-		.wait()
-		.await
-		.wrap_err("failed to wait for systemd target to start")?;
-
-	if output.success() {
-		Ok(())
-	} else {
-		Err(eyre!(
-			"failed to start systemd target: code {}",
-			output.code().unwrap_or(-1),
-		))
-	}
+	let manager = systemd_client::manager::build_blocking_proxy()
+		.wrap_err("failed to connect to org.freedesktop.systemd1.Manager")?;
+	manager
+		.start_unit("cosmic-session.target", "replace")
+		.wrap_err("failed to start cosmic-session.target")?;
+	Ok(())
 }
