@@ -241,6 +241,7 @@ dependencies = [
  "futures-util",
  "libc",
  "nix 0.24.1",
+ "scopeguard",
  "sendfd",
  "serde",
  "serde_json",
