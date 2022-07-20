@@ -55,21 +55,25 @@ async fn main() -> Result<()> {
 
 	let mut sockets = Vec::with_capacity(2);
 
+	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+		.wrap_err("failed to create panel socket")?;
 	generic::run_executable(
 		token.child_token(),
 		info_span!(parent: None, "cosmic-panel"),
 		"cosmic-panel",
 		vec!["testing-panel".into()],
-		comp::create_privileged_socket(&mut sockets, &env_vars)
-			.wrap_err("failed to create panel socket")?,
+		env,
+		vec![fd],
 	);
+	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+		.wrap_err("failed to create dock socket")?;
 	generic::run_executable(
 		token.child_token(),
 		info_span!(parent: None, "cosmic-panel dock"),
 		"cosmic-panel",
 		vec!["testing-dock".into()],
-		comp::create_privileged_socket(&mut sockets, &env_vars)
-			.wrap_err("failed to create dock socket")?,
+		env,
+		vec![fd],
 	);
 	generic::run_executable(
 		token.child_token(),

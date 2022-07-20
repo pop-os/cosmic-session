@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use std::process::{ExitStatus, Stdio};
+use color_eyre::eyre::{ContextCompat, Result, WrapErr};
+use nix::{fcntl, unistd};
+use std::{
+	os::unix::prelude::*,
+	process::{ExitStatus, Stdio},
+};
 use tokio::{
 	io::{AsyncBufReadExt, BufReader},
 	process::Command,
@@ -28,16 +33,24 @@ impl ProcessHandler {
 		}
 	}
 
+	// TODO: Use `OwnedFd` when stable
 	pub fn run(
 		self,
 		executable: impl ToString,
 		args: Vec<String>,
 		vars: Vec<(String, String)>,
+		fds: Vec<RawFd>,
 		span: &Span,
 	) {
 		let executable = executable.to_string();
 		tokio::spawn(
 			async move {
+				for fd in &fds {
+					if let Err(err) = mark_as_not_cloexec(fd) {
+						error!("failed to launch '{}': {}", executable, err);
+						return;
+					}
+				}
 				let mut child = match Command::new(&executable)
 					.args(&args)
 					.stdin(Stdio::null())
@@ -58,6 +71,9 @@ impl ProcessHandler {
 						return;
 					}
 				};
+				for fd in &fds {
+					let _ = unistd::close(*fd);
+				}
 				let mut stdout = BufReader::new(child.stdout.take().unwrap()).lines();
 				let mut stderr = BufReader::new(child.stderr.take().unwrap()).lines();
 				std::mem::drop(self.tx.send(ProcessEvent::Started));
@@ -115,4 +131,19 @@ impl ProcessHandler {
 			.instrument(span.clone()),
 		);
 	}
+}
+
+fn mark_as_not_cloexec(file: &impl AsRawFd) -> Result<()> {
+	let raw_fd = file.as_raw_fd();
+	let fd_flags = fcntl::FdFlag::from_bits(
+		fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)
+			.wrap_err("failed to get GETFD value of stream")?,
+	)
+	.wrap_err("failed to get fd flags from file")?;
+	fcntl::fcntl(
+		raw_fd,
+		fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
+	)
+	.wrap_err("failed to set CLOEXEC on file")?;
+	Ok(())
 }

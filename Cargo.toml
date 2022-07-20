@@ -23,3 +23,4 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-journald = "0.3.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+zbus = { version = "2.0.1" }

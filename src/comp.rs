@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::process::{ProcessEvent, ProcessHandler};
-use color_eyre::eyre::{ContextCompat, Result, WrapErr};
-use nix::fcntl;
+use color_eyre::eyre::{Result, WrapErr};
+use nix::unistd;
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
-use std::{
-	collections::HashMap,
-	os::unix::prelude::{AsRawFd, IntoRawFd},
-};
+use std::{collections::HashMap, os::unix::prelude::*};
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	net::{
@@ -30,30 +27,14 @@ pub enum Message {
 	NewPrivilegedClient { count: usize },
 }
 
-fn mark_as_not_cloexec(stream: &UnixStream) -> Result<()> {
-	let raw_fd = stream.as_raw_fd();
-	let fd_flags = fcntl::FdFlag::from_bits(
-		fcntl::fcntl(raw_fd, fcntl::FcntlArg::F_GETFD)
-			.wrap_err("failed to get GETFD value of stream")?,
-	)
-	.wrap_err("failed to get fd flags from file")?;
-	fcntl::fcntl(
-		raw_fd,
-		fcntl::FcntlArg::F_SETFD(fd_flags.difference(fcntl::FdFlag::FD_CLOEXEC)),
-	)
-	.wrap_err("failed to set CLOEXEC on file")?;
-	Ok(())
-}
-
 pub fn create_privileged_socket(
 	sockets: &mut Vec<UnixStream>,
 	env_vars: &[(String, String)],
-) -> Result<Vec<(String, String)>> {
+) -> Result<(Vec<(String, String)>, RawFd)> {
 	let (comp_socket, client_socket) =
 		UnixStream::pair().wrap_err("failed to create socket pair")?;
 	sockets.push(comp_socket);
 	let client_fd = {
-		mark_as_not_cloexec(&client_socket).wrap_err("failed to mark client stream as CLOEXEC")?;
 		let std_stream = client_socket
 			.into_std()
 			.wrap_err("failed to convert client socket to std socket")?;
@@ -64,7 +45,7 @@ pub fn create_privileged_socket(
 	};
 	let mut env_vars = env_vars.to_vec();
 	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.to_string()));
-	Ok(env_vars)
+	Ok((env_vars, client_fd))
 }
 
 async fn receive_event(rx: &mut mpsc::UnboundedReceiver<ProcessEvent>) -> Option<()> {
@@ -159,7 +140,6 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 	let fds = stream
 		.into_iter()
 		.map(|stream| {
-			mark_as_not_cloexec(&stream).wrap_err("failed to mark stream as CLOEXEC")?;
 			let std_stream = stream
 				.into_std()
 				.wrap_err("failed to convert stream to std stream")?;
@@ -183,6 +163,9 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
 	let fd: &UnixStream = session_tx.as_ref();
 	fd.send_with_fd(&[0], &fds).wrap_err("failed to send fd")?;
+	for fd in &fds {
+		let _ = unistd::close(*fd);
+	}
 	info!("sent {} fds", fds.len());
 	Ok(())
 }
@@ -196,7 +179,6 @@ pub fn run_compositor(
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
 	let (mut session_rx, mut session_tx) = session.into_split();
 	let comp = {
-		mark_as_not_cloexec(&comp).wrap_err("failed to mark compositor stream as CLOEXEC")?;
 		let std_stream = comp
 			.into_std()
 			.wrap_err("failed to convert compositor unix stream to a standard unix stream")?;
@@ -213,6 +195,7 @@ pub fn run_compositor(
 				"cosmic-comp",
 				vec![],
 				vec![("COSMIC_SESSION_SOCK".into(), comp.to_string())],
+				vec![comp],
 				&span,
 			);
 			let mut ipc_state = IpcState {
