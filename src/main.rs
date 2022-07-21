@@ -42,8 +42,8 @@ async fn main() -> Result<()> {
 		.wrap_err("failed to start systemd target")?;
 	// Always stop the target when the process exits or panics.
 	scopeguard::defer! {
-		if let Ok(manager) = systemd_client::manager::build_blocking_proxy() {
-			manager.stop_unit("cosmic-session.target", "replace").ok();
+		if let Err(error) = systemd::stop_systemd_target() {
+			error!("failed to stop systemd target: {:?}", error);
 		}
 	}
 	let env_vars = env_rx
