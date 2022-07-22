@@ -5,6 +5,7 @@ extern crate tracing;
 mod comp;
 mod generic;
 mod process;
+mod service;
 mod systemd;
 
 use async_signals::Signals;
@@ -14,6 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use zbus::ConnectionBuilder;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -77,11 +79,24 @@ async fn main() -> Result<()> {
 	);
 	socket_tx.send(sockets).unwrap();
 
+	let (exit_tx, exit_rx) = oneshot::channel();
+	let _ = ConnectionBuilder::session()?
+		.name("com.system76.CosmicSession")?
+		.serve_at("/com/system76/CosmicSession", service::SessionService {
+			exit_tx: Some(exit_tx),
+		})?
+		.build()
+		.await?;
+
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	loop {
 		tokio::select! {
 			_ = compositor_handle => {
 				info!("compositor exited");
+				break;
+			},
+			_ = exit_rx => {
+				info!("session exited by request");
 				break;
 			},
 			signal = signals.next() => match signal {
