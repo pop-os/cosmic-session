@@ -77,6 +77,15 @@ async fn main() -> Result<()> {
 		env,
 		vec![fd],
 	);
+	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars).wrap_err("failed to create applet host")?;
+	generic::run_executable(
+		token.child_token(),
+		info_span!(parent: None, "cosmic-applet-host"),
+		"cosmic-applet-host",
+		vec![],
+		env,
+		vec![fd]
+	);
 	socket_tx.send(sockets).unwrap();
 
 	let (exit_tx, exit_rx) = oneshot::channel();

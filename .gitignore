@@ -10,6 +10,7 @@
 
 # Debian packaging stuff
 .cargo
+vendor/
 vendor.tar
 *.xz
 *.deb
@@ -19,3 +20,11 @@ vendor.tar
 *.deb.tar.*
 *.buildinfo
 *.build
+debian/*
+!debian/*install
+!debian/*postinst
+!debian/changelog
+!debian/control
+!debian/links
+!debian/rules
+!debian/source
