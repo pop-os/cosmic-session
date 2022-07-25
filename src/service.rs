@@ -8,7 +8,7 @@ pub struct SessionService {
 
 #[dbus_interface(name = "com.system76.CosmicSession")]
 impl SessionService {
-	async fn exit(&mut self) {
+	fn exit(&mut self) {
 		match self.exit_tx.take() {
 			Some(tx) => {
 				tx.send(()).ok();
@@ -17,5 +17,9 @@ impl SessionService {
 				warn!("previously failed to properly exit session");
 			}
 		}
+	}
+
+	fn restart(&self) {
+		warn!("restarting session");
 	}
 }
