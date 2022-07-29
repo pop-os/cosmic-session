@@ -78,6 +78,14 @@ async fn main() -> Result<()> {
 		vec![fd],
 	);
 	socket_tx.send(sockets).unwrap();
+	generic::run_executable(
+		token.child_token(),
+		info_span!(parent: None, "cosmic-settings-daemon"),
+		"cosmic-settings-daemon",
+		vec![],
+		vec![],
+		vec![],
+	);
 
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?
