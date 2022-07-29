@@ -77,6 +77,19 @@ async fn main() -> Result<()> {
 		env,
 		vec![fd],
 	);
+	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+		.wrap_err("failed to create applet host")?;
+	generic::run_executable(
+		token.child_token(),
+		info_span!(parent: None, "swaybg"),
+		"swaybg",
+		vec![
+			"-i".into(),
+			"/usr/share/backgrounds/pop/kate-hazen-COSMIC-desktop-wallpaper.png".into(),
+		],
+		env,
+		vec![fd],
+	);
 	socket_tx.send(sockets).unwrap();
 	generic::run_executable(
 		token.child_token(),
