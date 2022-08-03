@@ -209,6 +209,7 @@ pub fn run_compositor(
 					},
 					result = receive_ipc(&mut ipc_state, &mut session_rx) => if let Err(err) = result {
 						error!("failed to receive IPC: {:?}", err);
+						break;
 					},
 					Some(socket) = socket_rx.recv() => {
 						send_fd(&mut session_tx, socket)
