@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::process::{ProcessEvent, ProcessHandler};
-use std::os::unix::io::RawFd;
+use std::os::unix::io::OwnedFd;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, Span};
@@ -11,7 +11,7 @@ pub fn run_executable(
 	executable: &'static str,
 	args: Vec<String>,
 	env_vars: Vec<(String, String)>,
-	fds: Vec<RawFd>,
+	fds: Vec<OwnedFd>,
 ) {
 	let span_2 = span.clone();
 	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
