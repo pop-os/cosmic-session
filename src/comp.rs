@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use crate::process::{ProcessEvent, ProcessHandler};
 use color_eyre::eyre::{Result, WrapErr};
-use nix::unistd;
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, os::unix::prelude::*};
@@ -30,7 +29,7 @@ pub enum Message {
 pub fn create_privileged_socket(
 	sockets: &mut Vec<UnixStream>,
 	env_vars: &[(String, String)],
-) -> Result<(Vec<(String, String)>, RawFd)> {
+) -> Result<(Vec<(String, String)>, OwnedFd)> {
 	// Create a new pair of unnamed Unix sockets
 	let (comp_socket, client_socket) =
 		UnixStream::pair().wrap_err("failed to create socket pair")?;
@@ -45,10 +44,10 @@ pub fn create_privileged_socket(
 		std_stream
 			.set_nonblocking(false)
 			.wrap_err("failed to mark client socket as blocking")?;
-		std_stream.into_raw_fd()
+		OwnedFd::from(std_stream)
 	};
 	let mut env_vars = env_vars.to_vec();
-	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.to_string()));
+	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.as_raw_fd().to_string()));
 	Ok((env_vars, client_fd))
 }
 
@@ -162,7 +161,7 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 			std_stream
 				.set_nonblocking(false)
 				.wrap_err("failed to set stream as blocking")?;
-			Ok(std_stream.into_raw_fd())
+			Ok(OwnedFd::from(std_stream))
 		})
 		.collect::<Result<Vec<_>>>()
 		.wrap_err("failed to convert streams to file descriptors")?;
@@ -184,11 +183,11 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
 	// Send our file descriptors.
 	let fd: &UnixStream = session_tx.as_ref();
-	fd.send_with_fd(&[0], &fds).wrap_err("failed to send fd")?;
-	// Close our copy of each file descriptor.
-	for fd in &fds {
-		let _ = unistd::close(*fd);
-	}
+	fd.send_with_fd(
+		&[0],
+		&fds.iter().map(|fd| fd.as_raw_fd()).collect::<Vec<_>>(),
+	)
+	.wrap_err("failed to send fd")?;
 	info!("sent {} fds", fds.len());
 	Ok(())
 }
@@ -211,7 +210,7 @@ pub fn run_compositor(
 		std_stream
 			.set_nonblocking(false)
 			.wrap_err("failed to mark compositor unix stream as blocking")?;
-		std_stream.into_raw_fd()
+		OwnedFd::from(std_stream)
 	};
 	// Create a new span, marking the upcoming task as `cosmic-comp` with tracing.
 	let span = info_span!(parent: None, "cosmic-comp");
@@ -223,7 +222,7 @@ pub fn run_compositor(
 			ProcessHandler::new(tx, &token).run(
 				"cosmic-comp",
 				vec![],
-				vec![("COSMIC_SESSION_SOCK".into(), comp.to_string())],
+				vec![("COSMIC_SESSION_SOCK".into(), comp.as_raw_fd().to_string())],
 				vec![comp],
 				&span,
 			);
