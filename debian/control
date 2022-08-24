@@ -19,4 +19,7 @@ Depends:
   cosmic-panel,
   cosmic-applet-host,
   cosmic-applets,
+  cosmic-osd,
+  cosmic-settings-daemon,
+  xdg-desktop-portal-cosmic,
 Description: The session for the COSMIC desktop
