@@ -11,8 +11,9 @@ publish = false
 async-signals = "0.4"
 color-eyre = "0.6"
 futures-util = "0.3"
+launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 libc = "0.2"
-nix = { version = "0.24", features = ["fs"], default-features = false }
+nix = { version = "0.25", features = ["fs"], default-features = false }
 scopeguard = "1"
 sendfd = { version = "0.4", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }

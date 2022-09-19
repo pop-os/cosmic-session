@@ -3,7 +3,6 @@
 extern crate tracing;
 
 mod comp;
-mod generic;
 mod process;
 mod service;
 mod systemd;
@@ -11,6 +10,7 @@ mod systemd;
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use futures_util::StreamExt;
+use launch_pad::{process::Process, ProcessManager};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tracing::metadata::LevelFilter;
@@ -55,70 +55,32 @@ async fn main() -> Result<()> {
 		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
+	let process_manager = ProcessManager::new().await;
 	let mut sockets = Vec::with_capacity(2);
 
 	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create panel socket")?;
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "cosmic-panel"),
-		"cosmic-panel",
-		vec![],
-		env,
-		vec![fd],
+	process_manager.start(Process::new().with_executable("cosmic-panel").with_env(env));
+	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+		.wrap_err("failed to create applet host")?;
+	process_manager.start(
+		Process::new()
+			.with_executable("cosmic-applet-host")
+			.with_env(env),
 	);
 	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create applet host")?;
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "cosmic-applet-host"),
-		"cosmic-applet-host",
-		vec![],
-		env,
-		vec![fd],
-	);
-	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create applet host")?;
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "swaybg"),
-		"swaybg",
-		vec![
-			"-i".into(),
-			"/usr/share/backgrounds/pop/kate-hazen-COSMIC-desktop-wallpaper.png".into(),
-		],
-		env,
-		vec![fd],
-	);
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "cosmic-settings-daemon"),
-		"cosmic-settings-daemon",
-		vec![],
-		vec![],
-		vec![],
-	);
-	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create applet host")?;
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "cosmic-osd"),
-		"cosmic-osd",
-		vec![],
-		env,
-		vec![fd],
-	);
-	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create applet host")?;
-	generic::run_executable(
-		token.child_token(),
-		info_span!(parent: None, "xdg-desktop-portal-cosmic"),
-		"/usr/libexec/xdg-desktop-portal-cosmic",
-		vec![],
-		env,
-		vec![fd],
+	process_manager.start(
+		Process::new()
+			.with_executable("swaybg")
+			.with_args(&[
+				"-i",
+				"/usr/share/backgrounds/pop/kate-hazen-COSMIC-desktop-wallpaper.png",
+			])
+			.with_env(env),
 	);
 	socket_tx.send(sockets).unwrap();
+	process_manager.start(Process::new().with_executable("cosmic-settings-daemon"));
 
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?

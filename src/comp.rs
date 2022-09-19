@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: GPL-3.0-only
-use crate::process::{ProcessEvent, ProcessHandler};
 use color_eyre::eyre::{Result, WrapErr};
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
@@ -49,28 +48,6 @@ pub fn create_privileged_socket(
 	let mut env_vars = env_vars.to_vec();
 	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.as_raw_fd().to_string()));
 	Ok((env_vars, client_fd))
-}
-
-async fn receive_event(rx: &mut mpsc::UnboundedReceiver<ProcessEvent>) -> Option<()> {
-	match rx.recv().await? {
-		ProcessEvent::Started => {
-			info!("started");
-			Some(())
-		}
-		// cosmic-comp outputs everything to stderr because slog
-		ProcessEvent::Stdout(line) | ProcessEvent::Stderr(line) => {
-			info!("{}", line);
-			Some(())
-		}
-		ProcessEvent::Ended(Some(status)) => {
-			error!("exited with status {}", status);
-			None
-		}
-		ProcessEvent::Ended(None) => {
-			error!("exited");
-			None
-		}
-	}
 }
 
 // Cancellation safe!
@@ -197,7 +174,6 @@ pub fn run_compositor(
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
 ) -> Result<JoinHandle<Result<()>>> {
-	let (tx, mut rx) = unbounded_channel::<ProcessEvent>();
 	// Create a pair of unix sockets - one for us (session),
 	// one for the compositor (comp)
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
