@@ -34,11 +34,13 @@ async fn main() -> Result<()> {
 
 	info!("Starting cosmic-session");
 
+	let process_manager = ProcessManager::new().await;
 	let token = CancellationToken::new();
 	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
-	let compositor_handle = comp::run_compositor(token.child_token(), socket_rx, env_tx)
-		.wrap_err("failed to start compositor")?;
+	let compositor_handle =
+		comp::run_compositor(&process_manager, token.child_token(), socket_rx, env_tx)
+			.wrap_err("failed to start compositor")?;
 	systemd::start_systemd_target()
 		.await
 		.wrap_err("failed to start systemd target")?;
@@ -55,32 +57,43 @@ async fn main() -> Result<()> {
 		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
-	let process_manager = ProcessManager::new().await;
 	let mut sockets = Vec::with_capacity(2);
 
 	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create panel socket")?;
-	process_manager.start(Process::new().with_executable("cosmic-panel").with_env(env));
+	process_manager
+		.start(Process::new().with_executable("cosmic-panel").with_env(env))
+		.await
+		.expect("failed to start panel");
 	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create applet host")?;
-	process_manager.start(
-		Process::new()
-			.with_executable("cosmic-applet-host")
-			.with_env(env),
-	);
+	process_manager
+		.start(
+			Process::new()
+				.with_executable("cosmic-applet-host")
+				.with_env(env),
+		)
+		.await
+		.expect("failed to start applet host");
 	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create applet host")?;
-	process_manager.start(
-		Process::new()
-			.with_executable("swaybg")
-			.with_args(&[
-				"-i",
-				"/usr/share/backgrounds/pop/kate-hazen-COSMIC-desktop-wallpaper.png",
-			])
-			.with_env(env),
-	);
+	process_manager
+		.start(
+			Process::new()
+				.with_executable("swaybg")
+				.with_args(&[
+					"-i",
+					"/usr/share/backgrounds/pop/kate-hazen-COSMIC-desktop-wallpaper.png",
+				])
+				.with_env(env),
+		)
+		.await
+		.expect("failed to start swaybg");
 	socket_tx.send(sockets).unwrap();
-	process_manager.start(Process::new().with_executable("cosmic-settings-daemon"));
+	process_manager
+		.start(Process::new().with_executable("cosmic-settings-daemon"))
+		.await
+		.expect("failed to start settings daemon");
 
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?

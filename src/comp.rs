@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use color_eyre::eyre::{Result, WrapErr};
+use launch_pad::{process::Process, ProcessManager};
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, os::unix::prelude::*};
@@ -9,10 +10,7 @@ use tokio::{
 		unix::{OwnedReadHalf, OwnedWriteHalf},
 		UnixStream,
 	},
-	sync::{
-		mpsc::{self, unbounded_channel},
-		oneshot,
-	},
+	sync::{mpsc, oneshot},
 	task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
@@ -170,10 +168,12 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 }
 
 pub fn run_compositor(
+	process_manager: &ProcessManager,
 	token: CancellationToken,
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
 ) -> Result<JoinHandle<Result<()>>> {
+	let process_manager = process_manager.clone();
 	// Create a pair of unix sockets - one for us (session),
 	// one for the compositor (comp)
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
@@ -195,13 +195,30 @@ pub fn run_compositor(
 		async move {
 			// Create a new process handler for cosmic-comp, with our compositor socket's
 			// file descriptor as the `COSMIC_SESSION_SOCK` environment variable.
-			ProcessHandler::new(tx, &token).run(
-				"cosmic-comp",
-				vec![],
-				vec![("COSMIC_SESSION_SOCK".into(), comp.as_raw_fd().to_string())],
-				vec![comp],
-				&span,
-			);
+			let stdout_span = span.clone();
+			let stderr_span = span.clone();
+			process_manager
+				.start_process(
+					Process::new()
+						.with_executable("cosmic-comp")
+						.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())])
+						.with_on_stdout(move |_, _, line| {
+							let stdout_span = stdout_span.clone();
+							async move {
+								info!("{}", line);
+							}
+							.instrument(stdout_span)
+						})
+						.with_on_stderr(move |_, _, line| {
+							let stderr_span = stderr_span.clone();
+							async move {
+								warn!("{}", line);
+							}
+							.instrument(stderr_span)
+						}),
+				)
+				.await
+				.expect("failed to launch compositor");
 			// Create a new state object for IPC purposes.
 			let mut ipc_state = IpcState {
 				env_tx: Some(env_tx),
@@ -209,11 +226,11 @@ pub fn run_compositor(
 			};
 			loop {
 				tokio::select! {
-					// Receive events from the process handler channel,
-					// exiting the loop if the process has exited.
+					/*
 					exit = receive_event(&mut rx) => if exit.is_none() {
 						break;
 					},
+					*/
 					// Receive IPC messages from the process,
 					// exiting the loop if IPC errors.
 					result = receive_ipc(&mut ipc_state, &mut session_rx) => if let Err(err) = result {
