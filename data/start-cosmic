@@ -17,7 +17,8 @@ done
 # /etc/profile contains a lot of important environment variables
 source /etc/profile
 
-if [ -n "${HOME}" -a -x "${HOME}/.profile" ]
+# load user's profile if it exists
+if [ -n "${HOME}" -a -f "${HOME}/.profile" ]
 then
     source "${HOME}/.profile"
 fi
