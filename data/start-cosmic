@@ -17,6 +17,11 @@ done
 # /etc/profile contains a lot of important environment variables
 source /etc/profile
 
+if [ -n "${HOME}" -a -x "${HOME}/.profile" ]
+then
+    source "${HOME}/.profile"
+fi
+
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:=pop:COSMIC}"
 export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:=wayland}"
 export XCURSOR_THEME="${XCURSOR_THEME:=Adwaita}"
