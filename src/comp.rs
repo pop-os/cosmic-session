@@ -16,6 +16,8 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
+use crate::process::mark_as_not_cloexec;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "message")]
 pub enum Message {
@@ -188,6 +190,7 @@ pub fn run_compositor(
 			.wrap_err("failed to mark compositor unix stream as blocking")?;
 		OwnedFd::from(std_stream)
 	};
+	mark_as_not_cloexec(&comp).expect("Failed to mark fd as not cloexec");
 	// Create a new span, marking the upcoming task as `cosmic-comp` with tracing.
 	let span = info_span!(parent: None, "cosmic-comp");
 	let _span = span.clone();
