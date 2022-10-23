@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
 		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
-	let mut sockets = Vec::with_capacity(2);
+	let mut sockets = Vec::with_capacity(3);
 
 	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create panel socket")?;
@@ -65,6 +65,7 @@ async fn main() -> Result<()> {
 		.start(Process::new().with_executable("cosmic-panel").with_env(env))
 		.await
 		.expect("failed to start panel");
+
 	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create applet host")?;
 	process_manager
@@ -75,14 +76,11 @@ async fn main() -> Result<()> {
 		)
 		.await
 		.expect("failed to start applet host");
+
 	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create applet host")?;
+		.wrap_err("failed to create cosmic-bg")?;
 	process_manager
-		.start(
-			Process::new()
-				.with_executable("cosmic-bg")
-				.with_env(env),
-		)
+		.start(Process::new().with_executable("cosmic-bg").with_env(env))
 		.await
 		.expect("failed to start cosmic-bg");
 	socket_tx.send(sockets).unwrap();
@@ -91,6 +89,20 @@ async fn main() -> Result<()> {
 		.await
 		.expect("failed to start settings daemon");
 
+	process_manager
+		.start(
+			Process::new()
+				.with_executable("wayland-proxy-virtwl")
+				.with_args(vec![
+					"--wayland-display",
+					"wayland-0",
+					"--x-display=0",
+					"--xrdb",
+					"Xft.dpi:150",
+				]),
+		)
+		.await
+		.expect("start wayland-proxy-virtwl failed");
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
