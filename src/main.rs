@@ -59,13 +59,13 @@ async fn main() -> Result<()> {
 
 	let mut sockets = Vec::with_capacity(2);
 
-	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create panel socket")?;
 	process_manager
 		.start(Process::new().with_executable("cosmic-panel").with_env(env))
 		.await
 		.expect("failed to start panel");
-	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create applet host")?;
 	process_manager
 		.start(
@@ -75,20 +75,16 @@ async fn main() -> Result<()> {
 		)
 		.await
 		.expect("failed to start applet host");
-	let (env, fd) = comp::create_privileged_socket(&mut sockets, &env_vars)
+	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
 		.wrap_err("failed to create applet host")?;
 	process_manager
 		.start(
 			Process::new()
-				.with_executable("swaybg")
-				.with_args(&[
-					"-i",
-					"/usr/share/backgrounds/pop/kate-hazen-COSMIC-desktop-wallpaper.png",
-				])
+				.with_executable("cosmic-bg")
 				.with_env(env),
 		)
 		.await
-		.expect("failed to start swaybg");
+		.expect("failed to start cosmic-bg");
 	socket_tx.send(sockets).unwrap();
 	process_manager
 		.start(Process::new().with_executable("cosmic-settings-daemon"))

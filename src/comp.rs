@@ -169,7 +169,7 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 
 pub fn run_compositor(
 	process_manager: &ProcessManager,
-	token: CancellationToken,
+	_token: CancellationToken,
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
 ) -> Result<JoinHandle<Result<()>>> {
