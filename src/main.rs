@@ -11,9 +11,12 @@ use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+	sync::{mpsc, oneshot},
+	time::{sleep, Duration},
+};
 use tokio_util::sync::CancellationToken;
-use tracing::metadata::LevelFilter;
+use tracing::{metadata::LevelFilter, Instrument};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zbus::ConnectionBuilder;
 
@@ -36,11 +39,12 @@ async fn main() -> Result<()> {
 
 	let process_manager = ProcessManager::new().await;
 	let token = CancellationToken::new();
-	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
+	let (_, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
 	let compositor_handle =
 		comp::run_compositor(&process_manager, token.child_token(), socket_rx, env_tx)
 			.wrap_err("failed to start compositor")?;
+	sleep(Duration::from_millis(2000)).await;
 	systemd::start_systemd_target()
 		.await
 		.wrap_err("failed to start systemd target")?;
@@ -57,52 +61,89 @@ async fn main() -> Result<()> {
 		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
-	let mut sockets = Vec::with_capacity(3);
-
-	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create panel socket")?;
+	let span = info_span!(parent: None, "cosmic-panel");
+	let stdout_span = span.clone();
+	let stderr_span = span.clone();
 	process_manager
-		.start(Process::new().with_executable("cosmic-panel").with_env(env))
+		.start(
+			Process::new()
+				.with_executable("cosmic-panel")
+				.with_env(env_vars.clone())
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				}),
+		)
 		.await
 		.expect("failed to start panel");
 
-	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create applet host")?;
+	let span = info_span!(parent: None, "cosmic-applet-host");
+	let stdout_span = span.clone();
+	let stderr_span = span.clone();
 	process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-applet-host")
-				.with_env(env),
+				.with_env(env_vars.clone())
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				}),
 		)
 		.await
 		.expect("failed to start applet host");
 
-	let (env, _) = comp::create_privileged_socket(&mut sockets, &env_vars)
-		.wrap_err("failed to create cosmic-bg")?;
+	let span = info_span!(parent: None, "cosmic-bg");
+	let stdout_span = span.clone();
+	let stderr_span = span.clone();
 	process_manager
-		.start(Process::new().with_executable("cosmic-bg").with_env(env))
+		.start(
+			Process::new()
+				.with_executable("cosmic-bg")
+				.with_env(env_vars.clone())
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				}),
+		)
 		.await
 		.expect("failed to start cosmic-bg");
-	socket_tx.send(sockets).unwrap();
+
 	process_manager
 		.start(Process::new().with_executable("cosmic-settings-daemon"))
 		.await
 		.expect("failed to start settings daemon");
 
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("wayland-proxy-virtwl")
-				.with_args(vec![
-					"--wayland-display",
-					"wayland-0",
-					"--x-display=0",
-					"--xrdb",
-					"Xft.dpi:150",
-				]),
-		)
-		.await
-		.expect("start wayland-proxy-virtwl failed");
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
