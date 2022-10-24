@@ -17,6 +17,7 @@ Depends:
   ${shlibs:Depends},
   cosmic-comp,
   cosmic-panel,
+  cosmic-bg,
   cosmic-applet-host,
   cosmic-applets,
   cosmic-osd,
