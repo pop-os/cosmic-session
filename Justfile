@@ -4,6 +4,7 @@ prefix := rootdir + '/usr'
 clean := '0'
 debug := '0'
 vendor := '0'
+x := '0'
 target := if debug == '1' { 'debug' } else { 'release' }
 vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
@@ -18,17 +19,23 @@ all: _extract_vendor
 
 # Installs files into the system
 install:
+	#!/usr/bin/env sh
+	
 	# main binary
 	install -Dm0755 target/release/cosmic-session {{bindir}}/cosmic-session
-
-	# session desktop file
-	install -Dm0644 data/cosmic.desktop {{sessiondir}}/cosmic.desktop
 
 	# session start script
 	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
 	
 	# systemd target
 	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target
+	
+	# session desktop file
+	if test {{x}} = 1; then
+		install -Dm0644 data/cosmic-x.desktop {{sessiondir}}/cosmic.desktop
+	else
+		install -Dm0644 data/cosmic.desktop {{sessiondir}}/cosmic.desktop
+	fi
 
 clean_vendor:
 	rm -rf vendor vendor.tar .cargo/config

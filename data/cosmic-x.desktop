@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=COSMIC
+Comment=This session logs you into the COSMIC desktop with experimental X support
+Exec=env COSMIC_X=1 /usr/bin/start-cosmic
+TryExec=/usr/bin/start-cosmic
+Type=Application
+DesktopNames=pop:COSMIC

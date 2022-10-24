@@ -3,6 +3,7 @@
 DESTDIR = debian/cosmic-session
 CLEAN ?= 1
 VENDOR ?= 1
+X ?= 0
 
 %:
 	dh $@
@@ -24,7 +25,7 @@ override_dh_auto_clean:
 	fi
 
 override_dh_auto_build:
-	just rootdir=$(DESTDIR) debug=$(DEBUG) vendor=$(VENDOR)
+	just rootdir=$(DESTDIR) debug=$(DEBUG) vendor=$(VENDOR) x=${X}
 
 override_dh_auto_install:
-	just rootdir=$(DESTDIR) install
+	just rootdir=$(DESTDIR) x=${X} install
