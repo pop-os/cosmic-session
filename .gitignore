@@ -8,6 +8,9 @@
 # Added by cargo
 /target
 
+# Added by Nix
+/result
+
 # Debian packaging stuff
 .cargo
 vendor/
