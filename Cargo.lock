@@ -232,6 +232,7 @@ dependencies = [
  "futures-util",
  "launch-pad",
  "libc",
+ "log-panics",
  "nix 0.25.0",
  "scopeguard",
  "sendfd",
@@ -482,6 +483,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "log-panics"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f9dd8546191c1850ecf67d22f5ff00a935b890d0e84713159a55495cc2ac5f"
+dependencies = [
+ "backtrace",
+ "log",
 ]
 
 [[package]]

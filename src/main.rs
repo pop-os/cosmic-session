@@ -34,6 +34,7 @@ async fn main() -> Result<()> {
 		)
 		.try_init()
 		.wrap_err("failed to initialize logger")?;
+	log_panics::init();
 
 	info!("Starting cosmic-session");
 
@@ -61,28 +62,11 @@ async fn main() -> Result<()> {
 		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
-	let span = info_span!(parent: None, "cosmic-panel");
-	let stdout_span = span.clone();
-	let stderr_span = span.clone();
 	process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
-				.with_env(env_vars.clone())
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				}),
+				.with_env(env_vars.clone()),
 		)
 		.await
 		.expect("failed to start panel");
@@ -173,9 +157,12 @@ async fn main() -> Result<()> {
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
-		.serve_at("/com/system76/CosmicSession", service::SessionService {
-			exit_tx: Some(exit_tx),
-		})?
+		.serve_at(
+			"/com/system76/CosmicSession",
+			service::SessionService {
+				exit_tx: Some(exit_tx),
+			},
+		)?
 		.build()
 		.await?;
 
