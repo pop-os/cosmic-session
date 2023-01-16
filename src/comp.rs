@@ -14,7 +14,6 @@ use tokio::{
 	task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::Instrument;
 
 use crate::process::mark_as_not_cloexec;
 
@@ -191,65 +190,43 @@ pub fn run_compositor(
 		OwnedFd::from(std_stream)
 	};
 	mark_as_not_cloexec(&comp).expect("Failed to mark fd as not cloexec");
-	// Create a new span, marking the upcoming task as `cosmic-comp` with tracing.
-	let span = info_span!(parent: None, "cosmic-comp");
-	let _span = span.clone();
-	Ok(tokio::spawn(
-		async move {
-			// Create a new process handler for cosmic-comp, with our compositor socket's
-			// file descriptor as the `COSMIC_SESSION_SOCK` environment variable.
-			let stdout_span = span.clone();
-			let stderr_span = span.clone();
-			process_manager
-				.start_process(
-					Process::new()
-						.with_executable("cosmic-comp")
-						.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())])
-						.with_on_stdout(move |_, _, line| {
-							let stdout_span = stdout_span.clone();
-							async move {
-								info!("{}", line);
-							}
-							.instrument(stdout_span)
-						})
-						.with_on_stderr(move |_, _, line| {
-							let stderr_span = stderr_span.clone();
-							async move {
-								warn!("{}", line);
-							}
-							.instrument(stderr_span)
-						}),
-				)
-				.await
-				.expect("failed to launch compositor");
-			// Create a new state object for IPC purposes.
-			let mut ipc_state = IpcState {
-				env_tx: Some(env_tx),
-				..IpcState::default()
-			};
-			loop {
-				tokio::select! {
-					/*
-					exit = receive_event(&mut rx) => if exit.is_none() {
-						break;
-					},
-					*/
-					// Receive IPC messages from the process,
-					// exiting the loop if IPC errors.
-					result = receive_ipc(&mut ipc_state, &mut session_rx) => if let Err(err) = result {
-						error!("failed to receive IPC: {:?}", err);
-						break;
-					},
-					// Send any file descriptors we need to the compositor.
-					Some(socket) = socket_rx.recv() => {
-						send_fd(&mut session_tx, socket)
-							.await
-							.wrap_err("failed to send file descriptor to compositor")?;
-					}
+	Ok(tokio::spawn(async move {
+		// Create a new process handler for cosmic-comp, with our compositor socket's
+		// file descriptor as the `COSMIC_SESSION_SOCK` environment variable.
+		process_manager
+			.start_process(
+				Process::new()
+					.with_executable("cosmic-comp")
+					.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())]),
+			)
+			.await
+			.expect("failed to launch compositor");
+		// Create a new state object for IPC purposes.
+		let mut ipc_state = IpcState {
+			env_tx: Some(env_tx),
+			..IpcState::default()
+		};
+		loop {
+			tokio::select! {
+				/*
+				exit = receive_event(&mut rx) => if exit.is_none() {
+					break;
+				},
+				*/
+				// Receive IPC messages from the process,
+				// exiting the loop if IPC errors.
+				result = receive_ipc(&mut ipc_state, &mut session_rx) => if let Err(err) = result {
+					error!("failed to receive IPC: {:?}", err);
+					break;
+				},
+				// Send any file descriptors we need to the compositor.
+				Some(socket) = socket_rx.recv() => {
+					send_fd(&mut session_tx, socket)
+						.await
+						.wrap_err("failed to send file descriptor to compositor")?;
 				}
 			}
-			Result::<()>::Ok(())
 		}
-		.instrument(_span),
-	))
+		Result::<()>::Ok(())
+	}))
 }
