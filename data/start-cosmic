@@ -25,16 +25,10 @@ fi
 
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:=pop:COSMIC}"
 export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:=wayland}"
-export XCURSOR_THEME="${XCURSOR_THEME:=Adwaita}"
+export XCURSOR_THEME="${XCURSOR_THEME:=Pop}"
 export _JAVA_AWT_WM_NONREPARENTING=1
-
-# experimental X support in cosmic, but still prefer wayland
-if [[ ! -z "${COSMIC_X}" ]]; then
-    export DISPLAY=:0
-    export GDK_BACKEND=wayland,x11
-    export MOZ_ENABLE_WAYLAND=1
-    export COSMIC_BACKEND=kms
-fi
+export GDK_BACKEND=wayland,x11
+export MOZ_ENABLE_WAYLAND=1
 
 # import environment variables from the login manager
 systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP
