@@ -22,6 +22,7 @@ Depends:
   cosmic-launcher,
   cosmic-applets,
   cosmic-osd,
+  cosmic-settings,
   cosmic-settings-daemon,
   xdg-desktop-portal-cosmic,
 Description: The session for the COSMIC desktop
