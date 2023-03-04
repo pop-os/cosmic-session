@@ -149,6 +149,32 @@ async fn main() -> Result<()> {
 		.await
 		.expect("failed to start cosmic-bg");
 
+	let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
+	let stdout_span = span.clone();
+	let stderr_span = span.clone();
+	process_manager
+		.start(
+			Process::new()
+				.with_executable("/usr/libexec/xdg-desktop-portal-cosmic")
+				.with_env(env_vars.clone())
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				}),
+		)
+		.await
+		.expect("Failed to start xdg-desktop-portal-cosmic");
+
 	process_manager
 		.start(Process::new().with_executable("cosmic-settings-daemon"))
 		.await
