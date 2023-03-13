@@ -72,108 +72,22 @@ async fn main() -> Result<()> {
 		.expect("failed to start panel");
 
 	let span = info_span!(parent: None, "cosmic-app-library");
-	let stdout_span = span.clone();
-	let stderr_span = span.clone();
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("cosmic-app-library")
-				.with_env(env_vars.clone())
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				}),
-		)
-		.await
-		.expect("failed to start app library");
+	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-launcher");
-	let stdout_span = span.clone();
-	let stderr_span = span.clone();
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("cosmic-launcher")
-				.with_env(env_vars.clone())
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				}),
-		)
-		.await
-		.expect("failed to start launcher");
+	start_component("cosmic-launcher", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-bg");
-	let stdout_span = span.clone();
-	let stderr_span = span.clone();
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("cosmic-bg")
-				.with_env(env_vars.clone())
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				}),
-		)
-		.await
-		.expect("failed to start cosmic-bg");
+	start_component("cosmic-bg", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
-	let stdout_span = span.clone();
-	let stderr_span = span.clone();
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("/usr/libexec/xdg-desktop-portal-cosmic")
-				.with_env(env_vars.clone())
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				}),
-		)
-		.await
-		.expect("Failed to start xdg-desktop-portal-cosmic");
+	start_component(
+		"/usr/libexec/xdg-desktop-portal-cosmic",
+		span,
+		&process_manager,
+		&env_vars,
+	)
+	.await;
 
 	process_manager
 		.start(Process::new().with_executable("cosmic-settings-daemon"))
@@ -183,12 +97,9 @@ async fn main() -> Result<()> {
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
-		.serve_at(
-			"/com/system76/CosmicSession",
-			service::SessionService {
-				exit_tx: Some(exit_tx),
-			},
-		)?
+		.serve_at("/com/system76/CosmicSession", service::SessionService {
+			exit_tx: Some(exit_tx),
+		})?
 		.build()
 		.await?;
 
@@ -216,4 +127,36 @@ async fn main() -> Result<()> {
 	token.cancel();
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(())
+}
+
+async fn start_component(
+	cmd: &str,
+	span: tracing::Span,
+	process_manager: &ProcessManager,
+	env_vars: &[(String, String)],
+) {
+	let stdout_span = span.clone();
+	let stderr_span = span.clone();
+	process_manager
+		.start(
+			Process::new()
+				.with_executable(cmd)
+				.with_env(env_vars.iter().cloned())
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				}),
+		)
+		.await
+		.expect(&format!("failed to start {}", cmd));
 }
