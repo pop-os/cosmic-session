@@ -77,6 +77,9 @@ async fn main() -> Result<()> {
 	let span = info_span!(parent: None, "cosmic-launcher");
 	start_component("cosmic-launcher", span, &process_manager, &env_vars).await;
 
+	let span = info_span!(parent: None, "cosmic-workspaces");
+	start_component("cosmic-workspaces", span, &process_manager, &env_vars).await;
+
 	let span = info_span!(parent: None, "cosmic-bg");
 	start_component("cosmic-bg", span, &process_manager, &env_vars).await;
 
