@@ -24,5 +24,6 @@ Depends:
   cosmic-osd,
   cosmic-settings,
   cosmic-settings-daemon,
+  cosmic-workspaces,
   xdg-desktop-portal-cosmic,
 Description: The session for the COSMIC desktop
