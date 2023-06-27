@@ -17,6 +17,7 @@ Depends:
   ${shlibs:Depends},
   cosmic-comp,
   cosmic-panel,
+  cosmic-notifications,
   cosmic-bg,
   cosmic-app-library,
   cosmic-launcher,
