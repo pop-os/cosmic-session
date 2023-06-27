@@ -40,8 +40,8 @@ pub fn create_privileged_socket(
 			.into_std()
 			.wrap_err("failed to convert client socket to std socket")?;
 		std_stream
-			.set_nonblocking(false)
-			.wrap_err("failed to mark client socket as blocking")?;
+			.set_nonblocking(true)
+			.wrap_err("failed to mark client socket as non-blocking")?;
 		OwnedFd::from(std_stream)
 	};
 	let mut env_vars = env_vars.to_vec();
