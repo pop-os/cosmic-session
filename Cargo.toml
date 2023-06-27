@@ -26,3 +26,4 @@ tracing = "0.1"
 tracing-journald = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zbus = { version = "2", default-features = false, features = ["tokio"] }
+cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications"}

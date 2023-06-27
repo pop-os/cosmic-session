@@ -3,12 +3,16 @@
 extern crate tracing;
 
 mod comp;
+mod notifications;
 mod process;
 mod service;
 mod systemd;
 
+use std::os::fd::AsRawFd;
+
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
+use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use tokio::{
@@ -62,15 +66,29 @@ async fn main() -> Result<()> {
 		.collect::<Vec<_>>();
 	info!("got environmental variables: {:?}", env_vars);
 
+	let (panel_notifications_fd, daemon_notifications_fd) =
+		notifications::create_socket().expect("Failed to create notification socket");
+	let mut panel_env_vars = env_vars.clone();
+
+	panel_env_vars.push((
+		PANEL_NOTIFICATIONS_FD.to_string(),
+		panel_notifications_fd.as_raw_fd().to_string(),
+	));
+
 	process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
-				.with_env(env_vars.clone()),
+				.with_env(panel_env_vars.clone()),
 		)
 		.await
 		.expect("failed to start panel");
 
+	let mut daemon_env_vars = env_vars.clone();
+	daemon_env_vars.push((
+		DAEMON_NOTIFICATIONS_FD.to_string(),
+		daemon_notifications_fd.as_raw_fd().to_string(),
+	));
 	let span = info_span!(parent: None, "cosmic-notifications");
 	start_component("cosmic-notifications", span, &process_manager, &env_vars).await;
 
