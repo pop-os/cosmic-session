@@ -71,6 +71,9 @@ async fn main() -> Result<()> {
 		.await
 		.expect("failed to start panel");
 
+	let span = info_span!(parent: None, "cosmic-notifications");
+	start_component("cosmic-notifications", span, &process_manager, &env_vars).await;
+
 	let span = info_span!(parent: None, "cosmic-app-library");
 	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
 
@@ -103,9 +106,12 @@ async fn main() -> Result<()> {
 	let (exit_tx, exit_rx) = oneshot::channel();
 	let _ = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
-		.serve_at("/com/system76/CosmicSession", service::SessionService {
-			exit_tx: Some(exit_tx),
-		})?
+		.serve_at(
+			"/com/system76/CosmicSession",
+			service::SessionService {
+				exit_tx: Some(exit_tx),
+			},
+		)?
 		.build()
 		.await?;
 
