@@ -11,7 +11,7 @@ publish = false
 async-signals = "0.4"
 color-eyre = "0.6"
 futures-util = "0.3"
-launch-pad = { git = "https://github.com/pop-os/launch-pad" }
+launch-pad = { git = "https://github.com/pop-os/launch-pad", branch = "stdin-msg" }
 libc = "0.2"
 log-panics = { version = "2", features = ["with-backtrace"] }
 nix = { version = "0.25", features = ["fs"], default-features = false }
@@ -20,7 +20,19 @@ sendfd = { version = "0.4", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 systemd_client = "0.2"
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = [
+  "fs",
+  "io-util",
+  "io-std",
+  "macros",
+  "net",
+  "parking_lot",
+  "process",
+  "rt",
+  "signal",
+  "sync",
+  "time",
+] }
 tokio-util = "0.7"
 tracing = "0.1"
 tracing-journald = "0.3"

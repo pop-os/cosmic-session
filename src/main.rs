@@ -8,7 +8,11 @@ mod process;
 mod service;
 mod systemd;
 
-use std::os::fd::AsRawFd;
+use std::{
+	ops::Deref,
+	os::fd::AsRawFd,
+	sync::{Arc, Mutex},
+};
 
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
@@ -23,6 +27,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{metadata::LevelFilter, Instrument};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zbus::ConnectionBuilder;
+
+use crate::process::{mark_as_cloexec, mark_as_not_cloexec};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -75,10 +81,43 @@ async fn main() -> Result<()> {
 		panel_notifications_fd.as_raw_fd().to_string(),
 	));
 
+	let panel_notifications_fd_pre = Arc::new(Mutex::new(panel_notifications_fd));
+	let panel_notifications_fd_post = panel_notifications_fd_pre.clone();
+	let span = info_span!(parent: None, "cosmic-panel");
+	let stdout_span = span.clone();
+	let stderr_span = span;
 	process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
+				.with_pre_start(move |_, _, _| {
+					let panel_notifications_fd = panel_notifications_fd_pre.clone();
+					let fd = panel_notifications_fd.lock().unwrap();
+					let fd = fd.deref();
+					mark_as_not_cloexec(&fd)
+						.expect("Failed to mark panel notifications socket as not CLOEXEC");
+				})
+				.with_post_start(move |_, _, _| {
+					let panel_notifications_fd = panel_notifications_fd_post.clone();
+					let fd = panel_notifications_fd.lock().unwrap();
+					let fd = fd.deref();
+					mark_as_cloexec(&fd)
+						.expect("Failed to mark panel notifications socket as CLOEXEC");
+				})
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				})
 				.with_env(panel_env_vars.clone()),
 		)
 		.await
@@ -90,7 +129,53 @@ async fn main() -> Result<()> {
 		daemon_notifications_fd.as_raw_fd().to_string(),
 	));
 	let span = info_span!(parent: None, "cosmic-notifications");
-	start_component("cosmic-notifications", span, &process_manager, &env_vars).await;
+	let stdout_span = span.clone();
+	let stderr_span = span;
+	let daemon_notifications_fd_pre = Arc::new(Mutex::new(daemon_notifications_fd));
+	let daemon_notifications_fd_post = daemon_notifications_fd_pre.clone();
+
+	process_manager
+		.start(
+			Process::new()
+				.with_executable("cosmic-notifications")
+				.with_pre_start(move |_, _, _| {
+					let daemon_notifications_fd = daemon_notifications_fd_pre.clone();
+					let fd = daemon_notifications_fd.lock().unwrap();
+					let fd = fd.deref();
+					mark_as_not_cloexec(&fd)
+						.expect("Failed to mark daemon notifications socket as not CLOEXEC");
+				})
+				.with_post_start(move |_, _, _| {
+					let daemon_notifications_fd = daemon_notifications_fd_post.clone();
+					let fd = daemon_notifications_fd.lock().unwrap();
+					let fd = fd.deref();
+					mark_as_cloexec(&fd)
+						.expect("Failed to mark daemon notifications socket as CLOEXEC");
+				})
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				})
+				.with_env(daemon_env_vars.clone()),
+		)
+		.await
+		.expect("failed to start notifications daemon");
+
+	// mark_as_cloexec(&daemon_notifications_fd)
+	// 	.expect("Failed to mark daemon notifications socket as CLOEXEC");
+	// start_component("cosmic-notifications", span, &process_manager, &env_vars).await;
+	// mark_as_not_cloexec(&daemon_notifications_fd)
+	// 	.expect("Failed to mark daemon notifications socket as not CLOEXEC");
 
 	let span = info_span!(parent: None, "cosmic-app-library");
 	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
