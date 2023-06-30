@@ -207,7 +207,7 @@ async fn main() -> Result<()> {
 		.expect("failed to start settings daemon");
 
 	let (exit_tx, exit_rx) = oneshot::channel();
-	let _ = ConnectionBuilder::session()?
+	let _conn = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
 		.serve_at(
 			"/com/system76/CosmicSession",
@@ -222,19 +222,22 @@ async fn main() -> Result<()> {
 	loop {
 		tokio::select! {
 			_ = compositor_handle => {
-				info!("compositor exited");
+				info!("EXITING: compositor exited");
 				break;
 			},
-			_ = exit_rx => {
-				info!("session exited by request");
+			res = exit_rx => {
+                if res.is_err() {
+                    warn!("exit channel dropped session");
+                }
+				info!("EXITING: session exited by request");
 				break;
 			},
 			signal = signals.next() => match signal {
 				Some(libc::SIGTERM | libc::SIGINT) => {
-					info!("received request to terminate");
+					info!("EXITING: received request to terminate");
 					break;
 				}
-				Some(signal) => unreachable!("received unhandled signal {}", signal),
+				Some(signal) => unreachable!("EXITING: received unhandled signal {}", signal),
 				None => break,
 			}
 		}
