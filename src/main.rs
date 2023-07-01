@@ -171,12 +171,6 @@ async fn main() -> Result<()> {
 		.await
 		.expect("failed to start notifications daemon");
 
-	// mark_as_cloexec(&daemon_notifications_fd)
-	// 	.expect("Failed to mark daemon notifications socket as CLOEXEC");
-	// start_component("cosmic-notifications", span, &process_manager, &env_vars).await;
-	// mark_as_not_cloexec(&daemon_notifications_fd)
-	// 	.expect("Failed to mark daemon notifications socket as not CLOEXEC");
-
 	let span = info_span!(parent: None, "cosmic-app-library");
 	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
 
@@ -226,9 +220,9 @@ async fn main() -> Result<()> {
 				break;
 			},
 			res = exit_rx => {
-                if res.is_err() {
-                    warn!("exit channel dropped session");
-                }
+				if res.is_err() {
+					warn!("exit channel dropped session");
+				}
 				info!("EXITING: session exited by request");
 				break;
 			},
