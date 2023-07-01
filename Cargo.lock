@@ -566,9 +566,10 @@ checksum = "453ad9f582a441959e5f0d088b02ce04cfe8d51a8eaf077f12ac6d3e94164ca6"
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad?branch=stdin-msg#ac8e2b454a2f602bbe2479b9b75c31293f7e4439"
+source = "git+https://github.com/pop-os/launch-pad?branch=stdin-msg#a29643a7e22bff92848e4eeb9de665c1e9c08536"
 dependencies = [
  "log",
+ "rand",
  "slotmap",
  "thiserror",
  "tokio",
