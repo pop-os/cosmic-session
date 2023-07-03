@@ -9,7 +9,6 @@ mod service;
 mod systemd;
 
 use std::{
-	ops::Deref,
 	os::fd::AsRawFd,
 	sync::{Arc, Mutex},
 };
@@ -27,8 +26,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::{metadata::LevelFilter, Instrument};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zbus::ConnectionBuilder;
-
-use crate::process::{mark_as_cloexec, mark_as_not_cloexec};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -82,7 +79,6 @@ async fn main() -> Result<()> {
 	));
 
 	let panel_notifications_fd_pre = Arc::new(Mutex::new(panel_notifications_fd));
-	let panel_notifications_fd_post = panel_notifications_fd_pre.clone();
 	let span = info_span!(parent: None, "cosmic-panel");
 	let stdout_span = span.clone();
 	let stderr_span = span;
@@ -90,19 +86,11 @@ async fn main() -> Result<()> {
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
-				.with_pre_start(move |_, _, _| {
+                // XXX this should be safe because cosmic-session runs on a single thread
+				.with_fds(move || {
 					let panel_notifications_fd = panel_notifications_fd_pre.clone();
 					let fd = panel_notifications_fd.lock().unwrap();
-					let fd = fd.deref();
-					mark_as_not_cloexec(&fd)
-						.expect("Failed to mark panel notifications socket as not CLOEXEC");
-				})
-				.with_post_start(move |_, _, _| {
-					let panel_notifications_fd = panel_notifications_fd_post.clone();
-					let fd = panel_notifications_fd.lock().unwrap();
-					let fd = fd.deref();
-					mark_as_cloexec(&fd)
-						.expect("Failed to mark panel notifications socket as CLOEXEC");
+					vec![fd.as_raw_fd()]
 				})
 				.with_on_stdout(move |_, _, line| {
 					let stdout_span = stdout_span.clone();
@@ -132,25 +120,16 @@ async fn main() -> Result<()> {
 	let stdout_span = span.clone();
 	let stderr_span = span;
 	let daemon_notifications_fd_pre = Arc::new(Mutex::new(daemon_notifications_fd));
-	let daemon_notifications_fd_post = daemon_notifications_fd_pre.clone();
 
 	process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-notifications")
-				.with_pre_start(move |_, _, _| {
+                // XXX this should be safe because cosmic-session runs on a single thread
+				.with_fds(move || {
 					let daemon_notifications_fd = daemon_notifications_fd_pre.clone();
 					let fd = daemon_notifications_fd.lock().unwrap();
-					let fd = fd.deref();
-					mark_as_not_cloexec(&fd)
-						.expect("Failed to mark daemon notifications socket as not CLOEXEC");
-				})
-				.with_post_start(move |_, _, _| {
-					let daemon_notifications_fd = daemon_notifications_fd_post.clone();
-					let fd = daemon_notifications_fd.lock().unwrap();
-					let fd = fd.deref();
-					mark_as_cloexec(&fd)
-						.expect("Failed to mark daemon notifications socket as CLOEXEC");
+					vec![fd.as_raw_fd()]
 				})
 				.with_on_stdout(move |_, _, line| {
 					let stdout_span = stdout_span.clone();
