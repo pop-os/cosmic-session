@@ -46,6 +46,12 @@ async fn main() -> Result<()> {
 	info!("Starting cosmic-session");
 
 	let process_manager = ProcessManager::new().await;
+	_ = process_manager.set_max_restarts(usize::MAX).await;
+	_ = process_manager
+		.set_restart_mode(launch_pad::RestartMode::ExponentialBackoff(
+			Duration::from_millis(10),
+		))
+		.await;
 	let token = CancellationToken::new();
 	let (_, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
@@ -86,7 +92,7 @@ async fn main() -> Result<()> {
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
-                // XXX this should be safe because cosmic-session runs on a single thread
+				// XXX this should be safe because cosmic-session runs on a single thread
 				.with_fds(move || {
 					let panel_notifications_fd = panel_notifications_fd_pre.clone();
 					let fd = panel_notifications_fd.lock().unwrap();
@@ -125,7 +131,7 @@ async fn main() -> Result<()> {
 		.start(
 			Process::new()
 				.with_executable("cosmic-notifications")
-                // XXX this should be safe because cosmic-session runs on a single thread
+				// XXX this should be safe because cosmic-session runs on a single thread
 				.with_fds(move || {
 					let daemon_notifications_fd = daemon_notifications_fd_pre.clone();
 					let fd = daemon_notifications_fd.lock().unwrap();
