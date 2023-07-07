@@ -8,7 +8,7 @@ pub async fn start_systemd_target() -> Result<()> {
 		.arg("--user")
 		.arg("cosmic-session.target")
 		.spawn()
-		.wrap_err("Failed to start multi-user.target")?;
+		.wrap_err("Failed to start cosmic-session.target")?;
 	Ok(())
 }
 
@@ -18,6 +18,6 @@ pub fn stop_systemd_target() -> Result<()> {
 		.arg("--user")
 		.arg("cosmic-session.target")
 		.spawn()
-		.wrap_err("Failed to stop multi-user.target")?;
+		.wrap_err("Failed to stop cosmic-session.target")?;
 	Ok(())
 }
