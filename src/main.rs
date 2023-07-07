@@ -8,10 +8,7 @@ mod process;
 mod service;
 mod systemd;
 
-use std::{
-	os::fd::AsRawFd,
-	sync::{Arc, Mutex},
-};
+use std::os::fd::AsRawFd;
 
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
@@ -84,7 +81,6 @@ async fn main() -> Result<()> {
 		panel_notifications_fd.as_raw_fd().to_string(),
 	));
 
-	let panel_notifications_fd_pre = Arc::new(Mutex::new(panel_notifications_fd));
 	let span = info_span!(parent: None, "cosmic-panel");
 	let stdout_span = span.clone();
 	let stderr_span = span;
@@ -92,11 +88,7 @@ async fn main() -> Result<()> {
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
-				.with_fds(move || {
-					let panel_notifications_fd = panel_notifications_fd_pre.clone();
-					let fd = panel_notifications_fd.lock().unwrap();
-					vec![fd.as_raw_fd()]
-				})
+				.with_fds(move || vec![panel_notifications_fd.as_raw_fd()])
 				.with_on_stdout(move |_, _, line| {
 					let stdout_span = stdout_span.clone();
 					async move {
@@ -124,18 +116,12 @@ async fn main() -> Result<()> {
 	let span = info_span!(parent: None, "cosmic-notifications");
 	let stdout_span = span.clone();
 	let stderr_span = span;
-	let daemon_notifications_fd_pre = Arc::new(Mutex::new(daemon_notifications_fd));
 
 	process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-notifications")
-				// XXX this should be safe because cosmic-session runs on a single thread
-				.with_fds(move || {
-					let daemon_notifications_fd = daemon_notifications_fd_pre.clone();
-					let fd = daemon_notifications_fd.lock().unwrap();
-					vec![fd.as_raw_fd()]
-				})
+				.with_fds(move || vec![daemon_notifications_fd.as_raw_fd()])
 				.with_on_stdout(move |_, _, line| {
 					let stdout_span = stdout_span.clone();
 					async move {
