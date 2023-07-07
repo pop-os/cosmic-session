@@ -92,7 +92,6 @@ async fn main() -> Result<()> {
 		.start(
 			Process::new()
 				.with_executable("cosmic-panel")
-				// XXX this should be safe because cosmic-session runs on a single thread
 				.with_fds(move || {
 					let panel_notifications_fd = panel_notifications_fd_pre.clone();
 					let fd = panel_notifications_fd.lock().unwrap();
