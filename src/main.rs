@@ -8,7 +8,10 @@ mod process;
 mod service;
 mod systemd;
 
-use std::os::fd::AsRawFd;
+use std::{
+	os::fd::AsRawFd,
+	sync::{Arc, Mutex},
+};
 
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
@@ -23,6 +26,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{metadata::LevelFilter, Instrument};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zbus::ConnectionBuilder;
+
+use crate::notifications::notifications_process;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -74,72 +79,63 @@ async fn main() -> Result<()> {
 
 	let (panel_notifications_fd, daemon_notifications_fd) =
 		notifications::create_socket().expect("Failed to create notification socket");
-	let mut panel_env_vars = env_vars.clone();
-
-	panel_env_vars.push((
-		PANEL_NOTIFICATIONS_FD.to_string(),
-		panel_notifications_fd.as_raw_fd().to_string(),
-	));
-
-	let span = info_span!(parent: None, "cosmic-panel");
-	let stdout_span = span.clone();
-	let stderr_span = span;
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("cosmic-panel")
-				.with_fds(move || vec![panel_notifications_fd.as_raw_fd()])
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				})
-				.with_env(panel_env_vars.clone()),
-		)
-		.await
-		.expect("failed to start panel");
 
 	let mut daemon_env_vars = env_vars.clone();
 	daemon_env_vars.push((
 		DAEMON_NOTIFICATIONS_FD.to_string(),
 		daemon_notifications_fd.as_raw_fd().to_string(),
 	));
-	let span = info_span!(parent: None, "cosmic-notifications");
-	let stdout_span = span.clone();
-	let stderr_span = span;
+	let mut panel_env_vars = env_vars.clone();
+	panel_env_vars.push((
+		PANEL_NOTIFICATIONS_FD.to_string(),
+		panel_notifications_fd.as_raw_fd().to_string(),
+	));
 
-	process_manager
-		.start(
-			Process::new()
-				.with_executable("cosmic-notifications")
-				.with_fds(move || vec![daemon_notifications_fd.as_raw_fd()])
-				.with_on_stdout(move |_, _, line| {
-					let stdout_span = stdout_span.clone();
-					async move {
-						info!("{}", line);
-					}
-					.instrument(stdout_span)
-				})
-				.with_on_stderr(move |_, _, line| {
-					let stderr_span = stderr_span.clone();
-					async move {
-						warn!("{}", line);
-					}
-					.instrument(stderr_span)
-				})
-				.with_env(daemon_env_vars.clone()),
-		)
-		.await
-		.expect("failed to start notifications daemon");
+	let panel_key = Arc::new(Mutex::new(None));
+	let notif_key = Arc::new(Mutex::new(None));
+
+	let notifications_span = info_span!(parent: None, "cosmic-notifications");
+	let panel_span = info_span!(parent: None, "cosmic-panel");
+
+	let mut guard = notif_key.lock().unwrap();
+	*guard = Some(
+		process_manager
+			.start(notifications_process(
+				notifications_span.clone(),
+				"cosmic-notifications",
+				notif_key.clone(),
+				daemon_env_vars.clone(),
+				daemon_notifications_fd.as_raw_fd(),
+				panel_span.clone(),
+				"cosmic-panel",
+				panel_key.clone(),
+				panel_env_vars.clone(),
+				panel_notifications_fd.as_raw_fd(),
+			))
+			.await
+			.expect("failed to start notifications daemon"),
+	);
+	drop(guard);
+
+	let mut guard = panel_key.lock().unwrap();
+	*guard = Some(
+		process_manager
+			.start(notifications_process(
+				panel_span,
+				"cosmic-panel",
+				panel_key.clone(),
+				panel_env_vars,
+				panel_notifications_fd.as_raw_fd(),
+				notifications_span,
+				"cosmic-notifications",
+				notif_key,
+				daemon_env_vars,
+				daemon_notifications_fd.as_raw_fd(),
+			))
+			.await
+			.expect("failed to start panel"),
+	);
+	drop(guard);
 
 	let span = info_span!(parent: None, "cosmic-app-library");
 	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
