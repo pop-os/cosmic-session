@@ -18,8 +18,12 @@ use color_eyre::{eyre::WrapErr, Result};
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
+use service::SessionRequest;
 use tokio::{
-	sync::{mpsc, oneshot},
+	sync::{
+		mpsc::{self, Receiver, Sender},
+		oneshot,
+	},
 	time::{sleep, Duration},
 };
 use tokio_util::sync::CancellationToken;
@@ -45,6 +49,46 @@ async fn main() -> Result<()> {
 		.wrap_err("failed to initialize logger")?;
 	log_panics::init();
 
+	let (session_tx, mut session_rx) = tokio::sync::mpsc::channel(10);
+	let session_tx_clone = session_tx.clone();
+	let _conn = ConnectionBuilder::session()?
+		.name("com.system76.CosmicSession")?
+		.serve_at(
+			"/com/system76/CosmicSession",
+			service::SessionService { session_tx },
+		)?
+		.build()
+		.await?;
+
+	loop {
+		match start(session_tx_clone.clone(), &mut session_rx).await {
+			Ok(Status::Exited) => {
+				info!("Exited cleanly");
+				break;
+			}
+			Ok(Status::Restarted) => {
+				info!("Restarting");
+			}
+			Err(error) => {
+				error!("Restarting after error: {:?}", error);
+			}
+		};
+		// Drain the session channel.
+		while session_rx.try_recv().is_ok() {}
+	}
+	Ok(())
+}
+
+#[derive(Debug)]
+pub enum Status {
+	Restarted,
+	Exited,
+}
+
+async fn start(
+	session_tx: Sender<SessionRequest>,
+	session_rx: &mut Receiver<SessionRequest>,
+) -> Result<Status> {
 	info!("Starting cosmic-session");
 
 	let process_manager = ProcessManager::new().await;
@@ -57,9 +101,14 @@ async fn main() -> Result<()> {
 	let token = CancellationToken::new();
 	let (_, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
-	let compositor_handle =
-		comp::run_compositor(&process_manager, token.child_token(), socket_rx, env_tx)
-			.wrap_err("failed to start compositor")?;
+	let compositor_handle = comp::run_compositor(
+		&process_manager,
+		token.child_token(),
+		socket_rx,
+		env_tx,
+		session_tx,
+	)
+	.wrap_err("failed to start compositor")?;
 	sleep(Duration::from_millis(2000)).await;
 	systemd::start_systemd_target()
 		.await
@@ -166,31 +215,27 @@ async fn main() -> Result<()> {
 		.await
 		.expect("failed to start settings daemon");
 
-	let (exit_tx, exit_rx) = oneshot::channel();
-	let _conn = ConnectionBuilder::session()?
-		.name("com.system76.CosmicSession")?
-		.serve_at(
-			"/com/system76/CosmicSession",
-			service::SessionService {
-				exit_tx: Some(exit_tx),
-			},
-		)?
-		.build()
-		.await?;
-
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
+	let mut status = Status::Exited;
 	loop {
+		let session_dbus_rx_next = session_rx.recv();
 		tokio::select! {
-			_ = compositor_handle => {
-				info!("EXITING: compositor exited");
-				break;
-			},
-			res = exit_rx => {
-				if res.is_err() {
-					warn!("exit channel dropped session");
+			res = session_dbus_rx_next => {
+				match res {
+					Some(service::SessionRequest::Exit) => {
+						info!("EXITING: session exited by request");
+						break;
+					}
+					Some(service::SessionRequest::Restart) => {
+						info!("RESTARTING: session restarted by request");
+						status = Status::Restarted;
+						break;
+					}
+					None => {
+						warn!("exit channel dropped session");
+						break;
+					}
 				}
-				info!("EXITING: session exited by request");
-				break;
 			},
 			signal = signals.next() => match signal {
 				Some(libc::SIGTERM | libc::SIGINT) => {
@@ -202,9 +247,10 @@ async fn main() -> Result<()> {
 			}
 		}
 	}
+	compositor_handle.abort();
 	token.cancel();
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-	Ok(())
+	Ok(status)
 }
 
 async fn start_component(
