@@ -15,38 +15,13 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::process::mark_as_not_cloexec;
+use crate::{process::mark_as_not_cloexec, service::SessionRequest};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "message")]
 pub enum Message {
 	SetEnv { variables: HashMap<String, String> },
 	NewPrivilegedClient { count: usize },
-}
-
-pub fn create_privileged_socket(
-	sockets: &mut Vec<UnixStream>,
-	env_vars: &[(String, String)],
-) -> Result<(Vec<(String, String)>, OwnedFd)> {
-	// Create a new pair of unnamed Unix sockets
-	let (comp_socket, client_socket) =
-		UnixStream::pair().wrap_err("failed to create socket pair")?;
-	// Push one socket to the list of sockets we were passed
-	sockets.push(comp_socket);
-	// Turn the other socket into a non-blocking fd, which we can pass to the child
-	// process
-	let client_fd = {
-		let std_stream = client_socket
-			.into_std()
-			.wrap_err("failed to convert client socket to std socket")?;
-		std_stream
-			.set_nonblocking(true)
-			.wrap_err("failed to mark client socket as non-blocking")?;
-		OwnedFd::from(std_stream)
-	};
-	let mut env_vars = env_vars.to_vec();
-	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.as_raw_fd().to_string()));
-	Ok((env_vars, client_fd))
 }
 
 // Cancellation safe!
@@ -173,6 +148,7 @@ pub fn run_compositor(
 	_token: CancellationToken,
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
+	session_dbus_tx: mpsc::Sender<SessionRequest>,
 ) -> Result<JoinHandle<Result<()>>> {
 	let process_manager = process_manager.clone();
 	// Create a pair of unix sockets - one for us (session),
@@ -197,7 +173,23 @@ pub fn run_compositor(
 			.start_process(
 				Process::new()
 					.with_executable("cosmic-comp")
-					.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())]),
+					.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())])
+					.with_on_exit(move |pman, _, err_code, _will_restart| {
+						let session_dbus_tx = session_dbus_tx.clone();
+						async move {
+							pman.stop();
+							if err_code == Some(0) {
+								info!("cosmic-comp exited successfully");
+								session_dbus_tx.send(SessionRequest::Exit).await.unwrap();
+							} else if let Some(err_code) = err_code {
+								error!("cosmic-comp exited with error code {}", err_code);
+								session_dbus_tx.send(SessionRequest::Restart).await.unwrap();
+							} else {
+								warn!("cosmic-comp exited by signal");
+								session_dbus_tx.send(SessionRequest::Restart).await.unwrap();
+							}
+						}
+					}),
 			)
 			.await
 			.expect("failed to launch compositor");
