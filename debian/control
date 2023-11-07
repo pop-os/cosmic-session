@@ -25,7 +25,6 @@ Depends:
   cosmic-notifications,
   cosmic-osd,
   cosmic-panel,
-  cosmic-screenshot,
   cosmic-settings,
   cosmic-settings-daemon,
   cosmic-workspaces,
