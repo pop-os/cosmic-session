@@ -9,17 +9,19 @@ mod service;
 mod systemd;
 
 use std::{
-	os::fd::AsRawFd,
+	os::fd::{AsRawFd, IntoRawFd},
 	sync::{Arc, Mutex},
 };
 
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
+use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
 use tokio::{
+	net::UnixStream,
 	sync::{
 		mpsc::{self, Receiver, Sender},
 		oneshot,
@@ -99,7 +101,7 @@ async fn start(
 		))
 		.await;
 	let token = CancellationToken::new();
-	let (_, socket_rx) = mpsc::unbounded_channel();
+	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
 	let compositor_handle = comp::run_compositor(
 		&process_manager,
@@ -160,6 +162,7 @@ async fn start(
 				panel_key.clone(),
 				panel_env_vars.clone(),
 				panel_notifications_fd.as_raw_fd(),
+				socket_tx.clone(),
 			))
 			.await
 			.expect("failed to start notifications daemon"),
@@ -180,6 +183,7 @@ async fn start(
 				notif_key,
 				daemon_env_vars,
 				daemon_notifications_fd.as_raw_fd(),
+				socket_tx.clone(),
 			))
 			.await
 			.expect("failed to start panel"),
@@ -187,19 +191,40 @@ async fn start(
 	drop(guard);
 
 	let span = info_span!(parent: None, "cosmic-app-library");
-	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
+	start_component(
+		"cosmic-app-library",
+		span,
+		&process_manager,
+		&env_vars,
+		&socket_tx,
+	)
+	.await;
 
 	let span = info_span!(parent: None, "cosmic-launcher");
-	start_component("cosmic-launcher", span, &process_manager, &env_vars).await;
+	start_component(
+		"cosmic-launcher",
+		span,
+		&process_manager,
+		&env_vars,
+		&socket_tx,
+	)
+	.await;
 
 	let span = info_span!(parent: None, "cosmic-workspaces");
-	start_component("cosmic-workspaces", span, &process_manager, &env_vars).await;
+	start_component(
+		"cosmic-workspaces",
+		span,
+		&process_manager,
+		&env_vars,
+		&socket_tx,
+	)
+	.await;
 
 	let span = info_span!(parent: None, "cosmic-osd");
-	start_component("cosmic-osd", span, &process_manager, &env_vars).await;
+	start_component("cosmic-osd", span, &process_manager, &env_vars, &socket_tx).await;
 
 	let span = info_span!(parent: None, "cosmic-bg");
-	start_component("cosmic-bg", span, &process_manager, &env_vars).await;
+	start_component("cosmic-bg", span, &process_manager, &env_vars, &socket_tx).await;
 
 	let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
 	start_component(
@@ -207,6 +232,7 @@ async fn start(
 		span,
 		&process_manager,
 		&env_vars,
+		&socket_tx,
 	)
 	.await;
 
@@ -258,9 +284,18 @@ async fn start_component(
 	span: tracing::Span,
 	process_manager: &ProcessManager,
 	env_vars: &[(String, String)],
+	socket_tx: &mpsc::UnboundedSender<Vec<UnixStream>>,
 ) {
+	let mut sockets = Vec::with_capacity(1);
+	let (env_vars, fd) = create_privileged_socket(&mut sockets, env_vars).unwrap();
+	let fd = fd.into_raw_fd();
+	if let Err(why) = socket_tx.send(sockets) {
+		error!(?why, "Failed to send the privileged socket");
+	}
+	let socket_tx_clone = socket_tx.clone();
 	let stdout_span = span.clone();
 	let stderr_span = span.clone();
+	let cmd_clone = cmd.to_string();
 	process_manager
 		.start(
 			Process::new()
@@ -279,7 +314,37 @@ async fn start_component(
 						warn!("{}", line);
 					}
 					.instrument(stderr_span)
-				}),
+				})
+				.with_on_exit(move |mut pman, key, err_code, will_restart| {
+					if let Some(err) = err_code {
+						error!("{cmd_clone} exited with error {}", err.to_string());
+					}
+
+					let socket_tx_clone = socket_tx_clone.clone();
+					async move {
+						if !will_restart {
+							return;
+						}
+						let mut sockets = Vec::with_capacity(1);
+						let env_vars = Vec::with_capacity(1);
+						let (env_vars, new_fd) =
+							create_privileged_socket(&mut sockets, &env_vars).unwrap();
+
+						let new_fd = new_fd.into_raw_fd();
+
+						if let Err(why) = socket_tx_clone.send(sockets) {
+							error!(?why, "Failed to send the privileged socket");
+						}
+						if let Err(why) = pman.update_process_env(&key, env_vars).await {
+							error!(?why, "Failed to update environment variables");
+						}
+						if let Err(why) = pman.update_process_fds(&key, move || vec![new_fd]).await
+						{
+							error!(?why, "Failed to update fds");
+						}
+					}
+				})
+				.with_fds(move || vec![fd]),
 		)
 		.await
 		.expect(&format!("failed to start {}", cmd));
