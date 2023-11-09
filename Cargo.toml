@@ -11,7 +11,8 @@ publish = false
 async-signals = "0.4"
 color-eyre = "0.6"
 futures-util = "0.3"
-launch-pad = { git = "https://github.com/pop-os/launch-pad" }
+launch-pad = { git = "https://github.com/pop-os/launch-pad", branch = "fix-close-fds-after-start" }
+# launch-pad = { path = "../launch-pad" }
 libc = "0.2"
 log-panics = { version = "2", features = ["with-backtrace"] }
 rustix = "0.38"
