@@ -1,8 +1,10 @@
 use color_eyre::eyre::Context;
 use color_eyre::Result;
+use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use launch_pad::process::Process;
 use launch_pad::ProcessKey;
-use std::os::fd::{IntoRawFd, OwnedFd, RawFd};
+use rustix::fd::AsRawFd;
+use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
@@ -32,12 +34,11 @@ pub fn notifications_process(
 	cmd: &'static str,
 	key: Arc<Mutex<Option<ProcessKey>>>,
 	mut env_vars: Vec<(String, String)>,
-	fd: RawFd,
+	fd: OwnedFd,
 	restart_span: tracing::Span,
 	restart_cmd: &'static str,
 	restart_key: Arc<Mutex<Option<ProcessKey>>>,
 	restart_env_vars: Vec<(String, String)>,
-	restart_fd: RawFd,
 	socket_tx: mpsc::UnboundedSender<Vec<tokio::net::UnixStream>>,
 ) -> Process {
 	env_vars.retain(|v| &v.0 != "WAYLAND_SOCKET");
@@ -49,7 +50,6 @@ pub fn notifications_process(
 	_ = socket_tx.send(sockets);
 	let env_clone = env_vars.clone();
 	let socket_tx_clone = socket_tx.clone();
-	let privileged_fd = privileged_fd.into_raw_fd();
 	Process::new()
 		.with_executable(cmd)
 		.with_fds(move || vec![privileged_fd, fd])
@@ -69,31 +69,45 @@ pub fn notifications_process(
 		})
 		.with_on_exit(move |pman, my_key, _, will_restart| {
 			// force restart of notifications / panel when the other exits
+			// also update the environment variables to use the new socket
+			let (my_fd, their_fd) = create_socket().expect("Failed to create notification socket");
+			let mut my_env_vars = env_clone.clone();
+			if let Some((_k, v)) = my_env_vars
+				.iter_mut()
+				.find(|(k, _v)| k == PANEL_NOTIFICATIONS_FD || k == DAEMON_NOTIFICATIONS_FD)
+			{
+				*v = format!("{}", my_fd.as_raw_fd().to_string());
+			}
+
+			let mut their_env_vars = restart_env_vars.clone();
+			if let Some((_k, v)) = their_env_vars
+				.iter_mut()
+				.find(|(k, _v)| k == PANEL_NOTIFICATIONS_FD || k == DAEMON_NOTIFICATIONS_FD)
+			{
+				*v = format!("{}", their_fd.as_raw_fd().to_string());
+			}
+
 			let new_process = notifications_process(
 				restart_span.clone(),
 				restart_cmd,
 				restart_key.clone(),
-				restart_env_vars.clone(),
-				restart_fd,
+				their_env_vars.clone(),
+				their_fd,
 				span.clone(),
 				cmd,
 				key.clone(),
-				env_clone.clone(),
-				fd,
+				my_env_vars.clone(),
 				socket_tx_clone.clone(),
 			);
 			let restart_key = restart_key.clone();
 			let socket_tx_clone = socket_tx_clone.clone();
 
-			let env_clone = env_clone.clone();
 			let mut pman_clone = pman.clone();
 			async move {
 				if will_restart {
 					let mut sockets = Vec::with_capacity(1);
 					let (env_vars, new_fd) =
-						create_privileged_socket(&mut sockets, &env_clone).unwrap();
-
-					let new_fd = new_fd.into_raw_fd();
+						create_privileged_socket(&mut sockets, &my_env_vars).unwrap();
 
 					if let Err(why) = socket_tx_clone.send(sockets) {
 						error!(?why, "Failed to send the privileged socket");
@@ -102,7 +116,7 @@ pub fn notifications_process(
 						error!(?why, "Failed to update environment variables");
 					}
 					if let Err(why) = pman_clone
-						.update_process_fds(&my_key, move || vec![new_fd, fd])
+						.update_process_fds(&my_key, move || vec![new_fd, my_fd])
 						.await
 					{
 						error!(?why, "Failed to update fds");

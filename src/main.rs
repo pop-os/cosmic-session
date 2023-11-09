@@ -9,7 +9,7 @@ mod service;
 mod systemd;
 
 use std::{
-	os::fd::{AsRawFd, IntoRawFd},
+	os::fd::AsRawFd,
 	sync::{Arc, Mutex},
 };
 
@@ -156,12 +156,11 @@ async fn start(
 				"cosmic-notifications",
 				notif_key.clone(),
 				daemon_env_vars.clone(),
-				daemon_notifications_fd.as_raw_fd(),
+				daemon_notifications_fd,
 				panel_span.clone(),
 				"cosmic-panel",
 				panel_key.clone(),
 				panel_env_vars.clone(),
-				panel_notifications_fd.as_raw_fd(),
 				socket_tx.clone(),
 			))
 			.await
@@ -177,12 +176,11 @@ async fn start(
 				"cosmic-panel",
 				panel_key.clone(),
 				panel_env_vars,
-				panel_notifications_fd.as_raw_fd(),
+				panel_notifications_fd,
 				notifications_span,
 				"cosmic-notifications",
 				notif_key,
 				daemon_env_vars,
-				daemon_notifications_fd.as_raw_fd(),
 				socket_tx.clone(),
 			))
 			.await
@@ -288,7 +286,6 @@ async fn start_component(
 ) {
 	let mut sockets = Vec::with_capacity(1);
 	let (env_vars, fd) = create_privileged_socket(&mut sockets, env_vars).unwrap();
-	let fd = fd.into_raw_fd();
 	if let Err(why) = socket_tx.send(sockets) {
 		error!(?why, "Failed to send the privileged socket");
 	}
@@ -329,8 +326,6 @@ async fn start_component(
 						let env_vars = Vec::with_capacity(1);
 						let (env_vars, new_fd) =
 							create_privileged_socket(&mut sockets, &env_vars).unwrap();
-
-						let new_fd = new_fd.into_raw_fd();
 
 						if let Err(why) = socket_tx_clone.send(sockets) {
 							error!(?why, "Failed to send the privileged socket");
