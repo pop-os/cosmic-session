@@ -101,6 +101,31 @@ async fn receive_ipc(state: &mut IpcState, rx: &mut OwnedReadHalf) -> Result<()>
 	}
 }
 
+pub fn create_privileged_socket(
+	sockets: &mut Vec<UnixStream>,
+	env_vars: &[(String, String)],
+) -> Result<(Vec<(String, String)>, OwnedFd)> {
+	// Create a new pair of unnamed Unix sockets
+	let (comp_socket, client_socket) =
+		UnixStream::pair().wrap_err("failed to create socket pair")?;
+	// Push one socket to the list of sockets we were passed
+	sockets.push(comp_socket);
+	// Turn the other socket into a non-blocking fd, which we can pass to the child
+	// process
+	let client_fd = {
+		let std_stream = client_socket
+			.into_std()
+			.wrap_err("failed to convert client socket to std socket")?;
+		std_stream
+			.set_nonblocking(true)
+			.wrap_err("failed to mark client socket as non-blocking")?;
+		OwnedFd::from(std_stream)
+	};
+	let mut env_vars = env_vars.to_vec();
+	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.as_raw_fd().to_string()));
+	Ok((env_vars, client_fd))
+}
+
 async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Result<()> {
 	// Turn our list of Unix streams into non-blocking file descriptors.
 	let fds = stream
@@ -134,12 +159,15 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
 	// Send our file descriptors.
 	let fd: &UnixStream = session_tx.as_ref();
+	info!("sending {} fds", fds.len());
+
 	fd.send_with_fd(
 		&[0],
-		&fds.iter().map(|fd| fd.as_raw_fd()).collect::<Vec<_>>(),
+		&fds.into_iter()
+			.map(|fd| fd.into_raw_fd())
+			.collect::<Vec<_>>(),
 	)
 	.wrap_err("failed to send fd")?;
-	info!("sent {} fds", fds.len());
 	Ok(())
 }
 
