@@ -8,18 +8,19 @@ target := if debug == '1' { 'debug' } else { 'release' }
 vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
+xdp_cosmic := '/usr/libexec/xdg-desktop-portal-cosmic'
 
 bindir := prefix + '/bin'
 systemddir := prefix + '/lib/systemd/user'
 sessiondir := prefix + '/share/wayland-sessions'
 
-all: _extract_vendor
-	cargo build {{cargo_args}}
+all: _extract_vendor build
+
+build:
+        XDP_COSMIC={{xdp_cosmic}} cargo build {{cargo_args}}
 
 # Installs files into the system
 install:
-	#!/usr/bin/env sh
-	
 	# main binary
 	install -Dm0755 target/release/cosmic-session {{bindir}}/cosmic-session
 
