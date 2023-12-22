@@ -2,6 +2,5 @@
 Name=COSMIC
 Comment=This session logs you into the COSMIC desktop
 Exec=/usr/bin/start-cosmic
-TryExec=/usr/bin/start-cosmic
 Type=Application
-DesktopNames=pop:COSMIC
+DesktopNames=COSMIC

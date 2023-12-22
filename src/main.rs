@@ -34,6 +34,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use zbus::ConnectionBuilder;
 
 use crate::notifications::notifications_process;
+const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -226,7 +227,7 @@ async fn start(
 
 	let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
 	start_component(
-		"/usr/libexec/xdg-desktop-portal-cosmic",
+		XDP_COSMIC.unwrap_or("/usr/libexec/xdg-desktop-portal-cosmic"),
 		span,
 		&process_manager,
 		&env_vars,

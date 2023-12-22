@@ -22,12 +22,18 @@
         craneLib = crane.lib.${system}.overrideToolchain fenix.packages.${system}.stable.toolchain;
 
         pkgDef = {
+          nativeBuildInputs = with pkgs; [ just pkg-config autoPatchelfHook ];
+          buildInputs = with pkgs; [
+            stdenv.cc.cc.lib
+          ];
           src = nix-filter.lib.filter {
             root = ./.;
             include = [
               ./src
               ./Cargo.toml
               ./Cargo.lock
+              ./Justfile
+              ./data
             ];
           };
         };
@@ -41,7 +47,22 @@
           inherit cosmic-session;
         };
 
-        packages.default = cosmic-session;
+        packages.default = cosmic-session.overrideAttrs (oldAttrs: rec {
+        buildPhase = ''
+            just prefix=$out xdp_cosmic=/run/current-system/sw/bin/xdg-desktop-portal-cosmic build 
+          '';
+        installPhase = ''
+            runHook preInstallPhase
+            just prefix=$out install
+          '';
+        preInstallPhase = ''
+            substituteInPlace data/start-cosmic --replace '#!/bin/bash' "#!${pkgs.bash}/bin/bash"
+            substituteInPlace data/start-cosmic --replace '/usr/bin/cosmic-session' "${placeholder "out"}/bin/cosmic-session"
+            substituteInPlace data/start-cosmic --replace '/usr/bin/dbus-run-session' "${pkgs.dbus}/bin/dbus-run-session"
+            substituteInPlace data/cosmic.desktop --replace '/usr/bin/start-cosmic' "${placeholder "out"}/bin/start-cosmic"
+        '';  
+          passthru.providedSessions = [ "cosmic" ];
+        });
 
         apps.default = flake-utils.lib.mkApp {
           drv = cosmic-session;
