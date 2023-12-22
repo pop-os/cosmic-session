@@ -34,4 +34,5 @@ Depends:
   xdg-desktop-portal-cosmic,
 Recommends:
   cosmic-edit,
+  cosmic-term,
 Description: The session for the COSMIC desktop
