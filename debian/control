@@ -25,9 +25,11 @@ Depends:
   cosmic-notifications,
   cosmic-osd,
   cosmic-panel,
+  cosmic-randr,
   cosmic-screenshot,
   cosmic-settings,
   cosmic-settings-daemon,
+  cosmic-term,
   cosmic-workspaces,
   xdg-desktop-portal-cosmic,
 Recommends:
