@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
 if command -v systemctl >/dev/null; then
@@ -16,13 +18,14 @@ if command -v systemctl >/dev/null; then
     done
 fi
 
-# /etc/profile contains a lot of important environment variables
-source /etc/profile
-
-# load user's profile if it exists
-if [ -n "${HOME}" -a -f "${HOME}/.profile" ]
-then
-    source "${HOME}/.profile"
+# use the user's preferred shell to acquire environment variables
+# see: https://github.com/pop-os/cosmic-session/issues/23
+if [ -n "${SHELL}" ]; then
+    # --in-login-shell: our flag to indicate that we don't need to recurse any further
+    if [ "${1}" != "--in-login-shell" ]; then
+        # `exec -l`: like `login`, prefixes $SHELL with a hyphen to start a login shell
+        exec bash -c "exec -l '${SHELL}' -c '${0} --in-login-shell'"
+    fi
 fi
 
 export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:=COSMIC}"
