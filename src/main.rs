@@ -56,9 +56,10 @@ async fn main() -> Result<()> {
 	let session_tx_clone = session_tx.clone();
 	let _conn = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
-		.serve_at("/com/system76/CosmicSession", service::SessionService {
-			session_tx,
-		})?
+		.serve_at(
+			"/com/system76/CosmicSession",
+			service::SessionService { session_tx },
+		)?
 		.build()
 		.await?;
 
@@ -112,15 +113,9 @@ async fn start(
 	)
 	.wrap_err("failed to start compositor")?;
 
-	// TODO: do we still need to sleep here if we are waiting for cosmic-comp's environment variables?
 	sleep(Duration::from_millis(2000)).await;
 
-	process_manager
-		.start(Process::new().with_executable("cosmic-settings-daemon"))
-		.await
-		.expect("failed to start settings daemon");
-
-	let env_vars = env_rx
+	let mut env_vars = env_rx
 		.await
 		.expect("failed to receive environmental variables")
 		.into_iter()
@@ -130,6 +125,21 @@ async fn start(
 		env_vars
 	);
 
+	// now that cosmic-comp is ready, set XDG_SESSION_TYPE=wayland for new processes
+	std::env::set_var("XDG_SESSION_TYPE", "wayland");
+	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
+	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
+
+	process_manager
+		.start(Process::new().with_executable("cosmic-settings-daemon"))
+		.await
+		.expect("failed to start settings daemon");
+
+	// notifying the user service manager that we've reached the graphical-session.target,
+	// which should only happen after:
+	// - cosmic-comp is ready
+	// - we've set any related variables
+	// - cosmic-settings-daemon is ready
 	systemd::start_systemd_target().await;
 	// Always stop the target when the process exits or panics.
 	scopeguard::defer! {
