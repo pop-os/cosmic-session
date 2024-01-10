@@ -111,13 +111,9 @@ async fn start(
 		session_tx,
 	)
 	.wrap_err("failed to start compositor")?;
-	sleep(Duration::from_millis(2000)).await;
 
-	systemd::start_systemd_target().await;
-	// Always stop the target when the process exits or panics.
-	scopeguard::defer! {
-		systemd::stop_systemd_target();
-	}
+	// TODO: do we still need to sleep here if we are waiting for cosmic-comp's environment variables?
+	sleep(Duration::from_millis(2000)).await;
 
 	process_manager
 		.start(Process::new().with_executable("cosmic-settings-daemon"))
@@ -129,7 +125,16 @@ async fn start(
 		.expect("failed to receive environmental variables")
 		.into_iter()
 		.collect::<Vec<_>>();
-	info!("got environmental variables: {:?}", env_vars);
+	info!(
+		"got environmental variables from cosmic-comp: {:?}",
+		env_vars
+	);
+
+	systemd::start_systemd_target().await;
+	// Always stop the target when the process exits or panics.
+	scopeguard::defer! {
+		systemd::stop_systemd_target();
+	}
 
 	let (panel_notifications_fd, daemon_notifications_fd) =
 		notifications::create_socket().expect("Failed to create notification socket");
