@@ -2,6 +2,13 @@
 
 use std::process::{Command, Stdio};
 
+pub async fn set_systemd_environment(key: &str, value: &str) {
+	run_optional_command(
+		"systemctl",
+		&["--user", "set-environment", &format!("{key}={value}")],
+	)
+}
+
 pub async fn start_systemd_target() {
 	run_optional_command(
 		"systemctl",
