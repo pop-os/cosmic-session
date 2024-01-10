@@ -1,12 +1,11 @@
-use color_eyre::eyre::Context;
-use color_eyre::Result;
+use color_eyre::{eyre::Context, Result};
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
-use launch_pad::process::Process;
-use launch_pad::ProcessKey;
+use launch_pad::{process::Process, ProcessKey};
 use rustix::fd::AsRawFd;
-use std::os::fd::OwnedFd;
-use std::os::unix::net::UnixStream;
-use std::sync::Arc;
+use std::{
+	os::{fd::OwnedFd, unix::net::UnixStream},
+	sync::Arc,
+};
 use tokio::sync::{mpsc, Mutex};
 use tracing::Instrument;
 
