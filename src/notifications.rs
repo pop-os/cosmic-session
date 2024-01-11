@@ -6,8 +6,8 @@ use launch_pad::ProcessKey;
 use rustix::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::os::unix::net::UnixStream;
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
 use tracing::Instrument;
 
 use crate::comp::create_privileged_socket;
@@ -76,7 +76,7 @@ pub fn notifications_process(
 				.iter_mut()
 				.find(|(k, _v)| k == PANEL_NOTIFICATIONS_FD || k == DAEMON_NOTIFICATIONS_FD)
 			{
-				*v = format!("{}", my_fd.as_raw_fd().to_string());
+				*v = my_fd.as_raw_fd().to_string();
 			}
 
 			let mut their_env_vars = restart_env_vars.clone();
@@ -84,7 +84,7 @@ pub fn notifications_process(
 				.iter_mut()
 				.find(|(k, _v)| k == PANEL_NOTIFICATIONS_FD || k == DAEMON_NOTIFICATIONS_FD)
 			{
-				*v = format!("{}", their_fd.as_raw_fd().to_string());
+				*v = their_fd.as_raw_fd().to_string();
 			}
 
 			let new_process = notifications_process(
@@ -122,14 +122,14 @@ pub fn notifications_process(
 						error!(?why, "Failed to update fds");
 					}
 
-					let Some(old) = restart_key.lock().unwrap().clone() else {
+					let Some(old) = *restart_key.lock().await else {
 						error!("Couldn't stop previous invocation of {}", cmd);
 						return;
 					};
 					_ = pman.stop_process(old).await;
 
 					if let Ok(new) = pman.start(new_process).await {
-						let mut guard = restart_key.lock().unwrap();
+						let mut guard = restart_key.lock().await;
 						*guard = Some(new);
 					}
 				}

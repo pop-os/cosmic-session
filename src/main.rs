@@ -8,10 +8,7 @@ mod process;
 mod service;
 mod systemd;
 
-use std::{
-	os::fd::AsRawFd,
-	sync::{Arc, Mutex},
-};
+use std::{os::fd::AsRawFd, sync::Arc};
 
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
@@ -24,7 +21,7 @@ use tokio::{
 	net::UnixStream,
 	sync::{
 		mpsc::{self, Receiver, Sender},
-		oneshot,
+		oneshot, Mutex,
 	},
 	time::{sleep, Duration},
 };
@@ -149,7 +146,7 @@ async fn start(
 	let notifications_span = info_span!(parent: None, "cosmic-notifications");
 	let panel_span = info_span!(parent: None, "cosmic-panel");
 
-	let mut guard = notif_key.lock().unwrap();
+	let mut guard = notif_key.lock().await;
 	*guard = Some(
 		process_manager
 			.start(notifications_process(
@@ -169,7 +166,7 @@ async fn start(
 	);
 	drop(guard);
 
-	let mut guard = panel_key.lock().unwrap();
+	let mut guard = panel_key.lock().await;
 	*guard = Some(
 		process_manager
 			.start(notifications_process(
@@ -343,5 +340,5 @@ async fn start_component(
 				.with_fds(move || vec![fd]),
 		)
 		.await
-		.expect(&format!("failed to start {}", cmd));
+		.unwrap_or_else(|_| panic!("failed to start {}", cmd));
 }
