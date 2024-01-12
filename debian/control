@@ -29,10 +29,10 @@ Depends:
   cosmic-screenshot,
   cosmic-settings,
   cosmic-settings-daemon,
-  cosmic-term,
   cosmic-workspaces,
   xdg-desktop-portal-cosmic,
 Recommends:
   cosmic-edit,
+  cosmic-files,
   cosmic-term,
 Description: The session for the COSMIC desktop
