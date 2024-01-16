@@ -17,7 +17,7 @@ use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
-use futures_util::{SinkExt, StreamExt};
+use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
 use tokio::{
@@ -118,6 +118,11 @@ async fn start(
 	scopeguard::defer! {
 		systemd::stop_systemd_target();
 	}
+
+	process_manager
+		.start(Process::new().with_executable("cosmic-settings-daemon"))
+		.await
+		.expect("failed to start settings daemon");
 
 	let env_vars = env_rx
 		.await
@@ -261,11 +266,6 @@ async fn start(
 		portal_extras,
 	)
 	.await;
-
-	process_manager
-		.start(Process::new().with_executable("cosmic-settings-daemon"))
-		.await
-		.expect("failed to start settings daemon");
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	let mut status = Status::Exited;
