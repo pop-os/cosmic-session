@@ -110,15 +110,13 @@ async fn start(
 	)
 	.wrap_err("failed to start compositor")?;
 	sleep(Duration::from_millis(2000)).await;
-	systemd::start_systemd_target()
-		.await
-		.wrap_err("failed to start systemd target")?;
+
+	systemd::start_systemd_target().await;
 	// Always stop the target when the process exits or panics.
 	scopeguard::defer! {
-		if let Err(error) = systemd::stop_systemd_target() {
-			error!("failed to stop systemd target: {:?}", error);
-		}
+		systemd::stop_systemd_target();
 	}
+
 	let env_vars = env_rx
 		.await
 		.expect("failed to receive environmental variables")

@@ -1,23 +1,34 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use color_eyre::{eyre::WrapErr, Result};
+use std::process::{Command, Stdio};
 
-pub async fn start_systemd_target() -> Result<()> {
-	let _ = std::process::Command::new("systemctl")
-		.arg("start")
-		.arg("--user")
-		.arg("cosmic-session.target")
-		.spawn()
-		.wrap_err("Failed to start cosmic-session.target")?;
-	Ok(())
+pub async fn start_systemd_target() {
+	run_optional_command(
+		"systemctl",
+		&["--user", "start", "--no-block", "cosmic-session.target"],
+	)
 }
 
-pub fn stop_systemd_target() -> Result<()> {
-	let _ = std::process::Command::new("systemctl")
-		.arg("stop")
-		.arg("--user")
-		.arg("cosmic-session.target")
-		.spawn()
-		.wrap_err("Failed to stop cosmic-session.target")?;
-	Ok(())
+pub fn stop_systemd_target() {
+	run_optional_command(
+		"systemctl",
+		&["--user", "stop", "--no-block", "cosmic-session.target"],
+	)
+}
+
+/// run a command, but log errors instead of returning them or panicking
+fn run_optional_command(cmd: &str, args: &[&str]) {
+	match Command::new(cmd).args(args).stdin(Stdio::null()).status() {
+		Ok(status) => {
+			if !status.success() {
+				match status.code() {
+					Some(code) => warn!("{} {}: exit code {}", cmd, args.join(" "), code),
+					None => warn!("{} {}: terminated by signal", cmd, args.join(" ")),
+				}
+			}
+		}
+		Err(error) => {
+			warn!("unable to start {} {}: {}", cmd, args.join(" "), error);
+		}
+	}
 }
