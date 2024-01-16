@@ -26,7 +26,7 @@ use tokio::{
 		mpsc::{self, Receiver, Sender},
 		oneshot, Mutex,
 	},
-	time::{sleep, Duration},
+	time::Duration,
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{metadata::LevelFilter, Instrument};
@@ -112,8 +112,6 @@ async fn start(
 		session_tx,
 	)
 	.wrap_err("failed to start compositor")?;
-
-	sleep(Duration::from_millis(2000)).await;
 
 	let mut env_vars = env_rx
 		.await
