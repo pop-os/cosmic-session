@@ -34,5 +34,6 @@ Depends:
 Recommends:
   cosmic-edit,
   cosmic-files,
+  cosmic-store,
   cosmic-term,
 Description: The session for the COSMIC desktop
