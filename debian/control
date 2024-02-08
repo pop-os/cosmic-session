@@ -20,6 +20,7 @@ Depends:
   cosmic-bg,
   cosmic-comp,
   cosmic-greeter,
+  cosmic-greeter-daemon,
   cosmic-icons,
   cosmic-launcher,
   cosmic-notifications,
