@@ -13,6 +13,7 @@ xdp_cosmic := '/usr/libexec/xdg-desktop-portal-cosmic'
 bindir := prefix + '/bin'
 systemddir := prefix + '/lib/systemd/user'
 sessiondir := prefix + '/share/wayland-sessions'
+applicationdir := prefix + '/share/applications'
 
 all: _extract_vendor build
 
@@ -32,6 +33,9 @@ install:
 	
 	# session	
 	install -Dm0644 data/cosmic.desktop {{sessiondir}}/cosmic.desktop
+
+	# mimeapps
+	install -Dm0644 data/cosmic-mimeapps.list {{applicationdir}}/cosmic-mimeapps.list
 
 clean_vendor:
 	rm -rf vendor vendor.tar .cargo/config
