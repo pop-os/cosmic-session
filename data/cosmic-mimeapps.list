@@ -109,6 +109,7 @@ multipart/x-zip=org.gnome.FileRoller.desktop
 text/plain=com.system76.CosmicEdit.desktop
 text/css=com.system76.CosmicEdit.desktop
 text/javascript=com.system76.CosmicEdit.desktop
+text/markdown=com.system76.CosmicEdit.desktop
 text/mathml=com.system76.CosmicEdit.desktop
 text/x-c++hdr=com.system76.CosmicEdit.desktop
 text/x-c++src=com.system76.CosmicEdit.desktop
