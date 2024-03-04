@@ -111,6 +111,7 @@ text/css=com.system76.CosmicEdit.desktop
 text/javascript=com.system76.CosmicEdit.desktop
 text/markdown=com.system76.CosmicEdit.desktop
 text/mathml=com.system76.CosmicEdit.desktop
+text/rust=com.system76.CosmicEdit.desktop
 text/x-c++hdr=com.system76.CosmicEdit.desktop
 text/x-c++src=com.system76.CosmicEdit.desktop
 text/x-csrc=com.system76.CosmicEdit.desktop
