@@ -200,7 +200,7 @@ pub fn run_compositor(
 		process_manager
 			.start_process(
 				Process::new()
-					.with_executable("cosmic-comp")
+					.with_executable("niri")
 					.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())])
 					.with_on_exit(move |pman, _, err_code, _will_restart| {
 						let session_dbus_tx = session_dbus_tx.clone();
