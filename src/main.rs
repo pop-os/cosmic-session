@@ -20,6 +20,7 @@ use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD}
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
+use systemd::{is_systemd_used, spawn_scope};
 use tokio::{
 	net::UnixStream,
 	sync::{
@@ -356,7 +357,7 @@ async fn start_component(
 	}
 	let (extra_fd_env, _): (Vec<_>, Vec<_>) = extra_fd_env.into_iter().unzip();
 	fds.push(fd);
-	process_manager
+	let key = process_manager
 		.start(
 			Process::new()
 				.with_executable(cmd)
@@ -414,4 +415,13 @@ async fn start_component(
 		)
 		.await
 		.unwrap_or_else(|_| panic!("failed to start {}", cmd));
+	if *is_systemd_used() {
+		//currently pid is optional hence the double unwrap
+		let pids = process_manager.get_pid(key).await.unwrap().unwrap();
+		//spawn_scope takes a vec of pids in case we want to spawn a scope for multiple processes
+		spawn_scope(&format!("{cmd}.scope"), vec![pids])
+			.await
+			.unwrap();
+	}
+	process_manager.get_pid(key).await.unwrap();
 }
