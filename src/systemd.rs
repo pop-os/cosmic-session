@@ -47,6 +47,7 @@ pub fn is_systemd_used() -> &'static bool {
 	)
 }
 
+#[cfg(feature = "systemd")]
 ///Spawn a systemd scope unit with the given name and PIDs.
 pub async fn spawn_scope(mut command: String, pids: Vec<u32>) -> Result<(), zbus::Error> {
 	let connection = Connection::session().await?;
