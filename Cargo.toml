@@ -13,7 +13,7 @@ color-eyre = "0.6"
 futures-util = "0.3"
 launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 itertools = "0.12"
-# launch-pad = { path = "../launch-pad" }
+#launch-pad = { path = "../../../launch-pad" }
 libc = "0.2"
 log-panics = { version = "2", features = ["with-backtrace"] }
 rustix = "0.38"
@@ -34,9 +34,16 @@ tokio = { version = "1", features = [
   "sync",
   "time",
 ] }
+zbus_systemd = { version = "0.25600.0", optional = true, features = [
+  "systemd1",
+] }
 tokio-util = "0.7"
 tracing = "0.1"
 tracing-journald = "0.3"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zbus = { version = "4.3.0", default-features = false, features = ["tokio"] }
 cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications" }
+
+[features]
+systemd = ["dep:zbus_systemd"]
+default = ["systemd"]
