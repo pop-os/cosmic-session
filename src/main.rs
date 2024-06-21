@@ -421,6 +421,12 @@ async fn start_component(
 		//spawn_scope takes a vec of pids in case we want to spawn a scope for multiple processes
 		spawn_scope(cmd.to_string(), vec![pids])
 			.await
+			.unwrap_or_else(|err| {
+				warn!(
+					"Failed to spawn scope for {}. Creating transient unit failed with {}",
+					cmd, err
+				);
+			});
 	}
 	process_manager.get_pid(key).await.unwrap();
 }
