@@ -419,9 +419,8 @@ async fn start_component(
 		//currently pid is optional hence the double unwrap
 		let pids = process_manager.get_pid(key).await.unwrap().unwrap();
 		//spawn_scope takes a vec of pids in case we want to spawn a scope for multiple processes
-		spawn_scope(&format!("{cmd}.scope"), vec![pids])
+		spawn_scope(cmd.to_string(), vec![pids])
 			.await
-			.unwrap();
 	}
 	process_manager.get_pid(key).await.unwrap();
 }

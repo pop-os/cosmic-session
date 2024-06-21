@@ -48,11 +48,17 @@ pub fn is_systemd_used() -> &'static bool {
 }
 
 ///Spawn a systemd scope unit with the given name and PIDs.
-pub async fn spawn_scope(scope_name: &str, pids: Vec<u32>) -> zbus::Result<()> {
-	let connection = Connection::session().await?;
-	let systemd_manager = SystemdManagerProxy::new(&connection).await?;
-	let pids = OwnedValue::try_from(Value::Array(Array::from(pids)))?;
+pub async fn spawn_scope(mut scope_name: String, pids: Vec<u32>) {
+	let connection = Connection::session().await.unwrap();
+	let systemd_manager = SystemdManagerProxy::new(&connection).await.unwrap();
+	let pids = OwnedValue::try_from(Array::from(pids)).unwrap();
 	let properties = vec![(String::from("PIDs"), pids)];
+	if scope_name.starts_with("/") {
+		// use the last component of the path as the unit name
+		scope_name = scope_name.rsplit('/').next().unwrap().to_string();
+	}
+	scope_name = format!("{}.scope", scope_name);
+	info!("scope name is {}", scope_name);
 	systemd_manager
 		.start_transient_unit(
 			scope_name.to_string(),
@@ -60,9 +66,8 @@ pub async fn spawn_scope(scope_name: &str, pids: Vec<u32>) -> zbus::Result<()> {
 			properties,
 			Vec::new(),
 		)
-		.await?;
-
-	Ok(())
+		.await
+		.unwrap();
 }
 
 /// run a command, but log errors instead of returning them or panicking
