@@ -685,12 +685,13 @@ checksum = "62b02a5381cc465bd3041d84623d0fa3b66738b52b8e2fc3bab8ad63ab032f4a"
 [[package]]
 name = "launch-pad"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/launch-pad#1596d1b83ae5d5c804a69146f89718776022b46b"
+source = "git+https://github.com/pop-os/launch-pad#a267ea1fe5f80b30f82b8ec557a88b23fa4ebdc3"
 dependencies = [
  "log",
  "nix 0.26.2",
  "rand",
  "slotmap",
+ "sync_wrapper",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -1254,6 +1255,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "sync_wrapper"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a7065abeca94b6a8a577f9bd45aa0867a2238b74e8eb67cf10d492bc39351394"
 
 [[package]]
 name = "tempfile"
