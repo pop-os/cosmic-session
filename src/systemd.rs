@@ -33,18 +33,21 @@ pub fn stop_systemd_target() {
 ///Determine if systemd is used as the init system. This should work on all linux distributions.
 pub fn is_systemd_used() -> &'static bool {
 	static IS_SYSTEMD_USED: OnceLock<bool> = OnceLock::new();
-	IS_SYSTEMD_USED.get_or_init(
-		|| match Command::new("readlink").args(&["/sbin/init"]).output() {
+	IS_SYSTEMD_USED.get_or_init(|| {
+		match Command::new("ls").args(["/run/systemd/system"]).output() {
 			Ok(output) => {
-				let init = String::from_utf8_lossy(&output.stdout);
-				init.trim().ends_with("/lib/systemd/systemd")
+				if output.status.success() {
+					true
+				} else {
+					false
+				}
 			}
 			Err(error) => {
 				warn!("unable to check if systemd is used: {}", error);
 				false
 			}
-		},
-	)
+		}
+	})
 }
 
 #[cfg(feature = "systemd")]
@@ -53,8 +56,8 @@ pub async fn spawn_scope(mut command: String, pids: Vec<u32>) -> Result<(), zbus
 	let connection = Connection::session().await?;
 	let systemd_manager = SystemdManagerProxy::new(&connection).await?;
 	let pids = OwnedValue::try_from(Array::from(pids)).unwrap();
-	let properties = vec![(String::from("PIDs"), pids)];
-	if command.starts_with("/") {
+	let properties: Vec<(String, OwnedValue)> = vec![(String::from("PIDs"), pids)];
+	if command.starts_with('/') {
 		// use the last component of the path as the unit name
 		command = command.rsplit('/').next().unwrap().to_string();
 	}
@@ -62,7 +65,7 @@ pub async fn spawn_scope(mut command: String, pids: Vec<u32>) -> Result<(), zbus
 	systemd_manager
 		.start_transient_unit(
 			scope_name.to_string(),
-			String::from("fail"),
+			String::from("replace"),
 			properties,
 			Vec::new(),
 		)
