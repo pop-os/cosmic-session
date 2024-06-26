@@ -38,4 +38,5 @@ Recommends:
   cosmic-files,
   cosmic-store,
   cosmic-term,
+  cosmic-wallpapers,
 Description: The session for the COSMIC desktop
