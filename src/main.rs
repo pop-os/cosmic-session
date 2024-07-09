@@ -9,6 +9,7 @@ mod service;
 mod systemd;
 
 use std::{
+	borrow::Cow,
 	os::fd::{AsRawFd, OwnedFd},
 	sync::Arc,
 };
@@ -20,6 +21,7 @@ use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD}
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
+use systemd::{is_systemd_used, spawn_scope};
 use tokio::{
 	net::UnixStream,
 	sync::{
@@ -330,7 +332,7 @@ async fn start(
 }
 
 async fn start_component(
-	cmd: &str,
+	cmd: impl Into<Cow<'static, str>>,
 	span: tracing::Span,
 	process_manager: &ProcessManager,
 	env_vars: &[(String, String)],
@@ -343,7 +345,9 @@ async fn start_component(
 	let socket_tx_clone = socket_tx.clone();
 	let stdout_span = span.clone();
 	let stderr_span = span.clone();
-	let cmd_clone = cmd.to_string();
+	let cmd = cmd.into();
+	let cmd_clone = cmd.clone();
+
 	let (mut fds, extra_fd_env, mut streams): (Vec<_>, Vec<_>, Vec<_>) =
 		itertools::multiunzip(extra_fds);
 	for kv in &extra_fd_env {
@@ -359,7 +363,7 @@ async fn start_component(
 	process_manager
 		.start(
 			Process::new()
-				.with_executable(cmd)
+				.with_executable(cmd.clone())
 				.with_env(env_vars.iter().cloned())
 				.with_on_stdout(move |_, _, line| {
 					let stdout_span = stdout_span.clone();
@@ -374,6 +378,25 @@ async fn start_component(
 						warn!("{}", line);
 					}
 					.instrument(stderr_span)
+				})
+				.with_on_start(move |pman, pkey, _will_restart| {
+					#[cfg(feature = "systemd")]
+					{
+						async move {
+							if *is_systemd_used() {
+								if let Ok((innr_cmd, Some(pid))) = pman.get_exe_and_pid(pkey).await
+								{
+									if let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await
+									{
+										warn!(
+													"Failed to spawn scope for {}. Creating transient unit failed with {}",
+													innr_cmd, err
+												);
+									};
+								}
+							}
+						}
+					}
 				})
 				.with_on_exit(move |mut pman, key, err_code, will_restart| {
 					if let Some(err) = err_code {

@@ -347,3 +347,4 @@ x-scheme-handler/ghelp=yelp.desktop
 x-scheme-handler/help=yelp.desktop
 x-scheme-handler/info=yelp.desktop
 x-scheme-handler/man=yelp.desktop
+x-scheme-handler/appstream=com.system76.CosmicStore.desktop

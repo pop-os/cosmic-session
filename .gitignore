@@ -26,6 +26,7 @@ vendor.tar
 debian/*
 !debian/*install
 !debian/*postinst
+!debian/*gsettings-override
 !debian/changelog
 !debian/control
 !debian/links

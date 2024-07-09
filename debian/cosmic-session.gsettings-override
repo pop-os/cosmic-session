@@ -1,0 +1,8 @@
+[org.gnome.desktop.interface:COSMIC]
+color-scheme = "prefer-dark"
+gtk-theme = "Pop-dark"
+icon-theme = "Pop"
+cursor-theme = "Pop"
+font-name = "Fira Sans Semi-Light 10"
+document-font-name = "Roboto Slab 11"
+monospace-font-name = "Fira Mono 11"
