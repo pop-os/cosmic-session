@@ -4,6 +4,7 @@ prefix := rootdir + '/usr'
 clean := '0'
 debug := '0'
 vendor := '0'
+cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
 target := if debug == '1' { 'debug' } else { 'release' }
 vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
@@ -23,7 +24,7 @@ build:
 # Installs files into the system
 install:
 	# main binary
-	install -Dm0755 target/release/cosmic-session {{bindir}}/cosmic-session
+	install -Dm0755 {{cargo-target-dir}}/release/cosmic-session {{bindir}}/cosmic-session
 
 	# session start script
 	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
