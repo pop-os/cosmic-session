@@ -31,6 +31,7 @@ Depends:
   cosmic-settings-daemon,
   cosmic-workspaces,
   pop-fonts,
+  switcheroo-control,
   xdg-desktop-portal-cosmic,
   xwayland,
 Recommends:
