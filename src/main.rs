@@ -21,6 +21,7 @@ use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD}
 use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
+#[cfg(feature = "systemd")]
 use systemd::{is_systemd_used, spawn_scope};
 use tokio::{
 	net::UnixStream,
@@ -58,10 +59,9 @@ async fn main() -> Result<()> {
 	let session_tx_clone = session_tx.clone();
 	let _conn = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
-		.serve_at(
-			"/com/system76/CosmicSession",
-			service::SessionService { session_tx },
-		)?
+		.serve_at("/com/system76/CosmicSession", service::SessionService {
+			session_tx,
+		})?
 		.build()
 		.await?;
 
@@ -135,8 +135,8 @@ async fn start(
 		.await
 		.expect("failed to start settings daemon");
 
-	// notifying the user service manager that we've reached the graphical-session.target,
-	// which should only happen after:
+	// notifying the user service manager that we've reached the
+	// graphical-session.target, which should only happen after:
 	// - cosmic-comp is ready
 	// - we've set any related variables
 	// - cosmic-settings-daemon is ready
@@ -379,22 +379,17 @@ async fn start_component(
 					}
 					.instrument(stderr_span)
 				})
-				.with_on_start(move |pman, pkey, _will_restart| {
+				.with_on_start(move |pman, pkey, _will_restart| async move {
 					#[cfg(feature = "systemd")]
-					{
-						async move {
-							if *is_systemd_used() {
-								if let Ok((innr_cmd, Some(pid))) = pman.get_exe_and_pid(pkey).await
-								{
-									if let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await
-									{
-										warn!(
-													"Failed to spawn scope for {}. Creating transient unit failed with {}",
-													innr_cmd, err
-												);
-									};
-								}
-							}
+					if *is_systemd_used() {
+						if let Ok((innr_cmd, Some(pid))) = pman.get_exe_and_pid(pkey).await {
+							if let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await {
+								warn!(
+									"Failed to spawn scope for {}. Creating transient unit failed \
+									 with {}",
+									innr_cmd, err
+								);
+							};
 						}
 					}
 				})
