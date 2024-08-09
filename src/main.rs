@@ -43,8 +43,10 @@ const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
 async fn main() -> Result<()> {
 	color_eyre::install().wrap_err("failed to install color_eyre error handler")?;
 
-	tracing_subscriber::registry()
-		.with(tracing_journald::layer().wrap_err("failed to connect to journald")?)
+	let trace = tracing_subscriber::registry();
+	#[cfg(feature = "systemd")]
+	let trace = trace.with(tracing_journald::layer().wrap_err("failed to connect to journald")?);
+	trace
 		.with(fmt::layer())
 		.with(
 			EnvFilter::builder()
