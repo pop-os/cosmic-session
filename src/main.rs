@@ -44,17 +44,34 @@ async fn main() -> Result<()> {
 	color_eyre::install().wrap_err("failed to install color_eyre error handler")?;
 
 	let trace = tracing_subscriber::registry();
+	let env_filter = EnvFilter::builder()
+		.with_default_directive(LevelFilter::INFO.into())
+		.from_env_lossy();
+
 	#[cfg(feature = "systemd")]
-	let trace = trace.with(tracing_journald::layer().wrap_err("failed to connect to journald")?);
+	if let Ok(journald) = tracing_journald::layer() {
+		trace
+			.with(journald)
+			.with(fmt::layer())
+			.with(env_filter)
+			.try_init()
+			.wrap_err("failed to initialize logger")?;
+	} else {
+		trace
+			.with(fmt::layer())
+			.with(env_filter)
+			.try_init()
+			.wrap_err("failed to initialize logger")?;
+		warn!("failed to connect to journald")
+	}
+
+	#[cfg(not(feature = "systemd"))]
 	trace
 		.with(fmt::layer())
-		.with(
-			EnvFilter::builder()
-				.with_default_directive(LevelFilter::INFO.into())
-				.from_env_lossy(),
-		)
+		.with(env_filter)
 		.try_init()
 		.wrap_err("failed to initialize logger")?;
+
 	log_panics::init();
 
 	let (session_tx, mut session_rx) = tokio::sync::mpsc::channel(10);
