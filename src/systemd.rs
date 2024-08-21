@@ -33,21 +33,7 @@ pub fn stop_systemd_target() {
 ///Determine if systemd is used as the init system. This should work on all linux distributions.
 pub fn is_systemd_used() -> &'static bool {
 	static IS_SYSTEMD_USED: OnceLock<bool> = OnceLock::new();
-	IS_SYSTEMD_USED.get_or_init(|| {
-		match Command::new("ls").args(["/run/systemd/system"]).output() {
-			Ok(output) => {
-				if output.status.success() {
-					true
-				} else {
-					false
-				}
-			}
-			Err(error) => {
-				warn!("unable to check if systemd is used: {}", error);
-				false
-			}
-		}
-	})
+	IS_SYSTEMD_USED.get_or_init(|| std::fs::metadata("/run/systemd/system").is_ok())
 }
 
 #[cfg(feature = "systemd")]
