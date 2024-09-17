@@ -40,4 +40,5 @@ Recommends:
   cosmic-store,
   cosmic-term,
   cosmic-wallpapers,
+  system-config-printer,
 Description: The session for the COSMIC desktop
