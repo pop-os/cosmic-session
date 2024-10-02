@@ -38,6 +38,7 @@ application/x-raw-disk-image=com.system76.Popsicle.desktop
 application/x-raw-disk-image-xz-compressed=com.system76.Popsicle.desktop
 application/x-debian-package=com.system76.CosmicStore.desktop
 application/vnd.debian.binary-package=com.system76.CosmicStore.desktop
+application/vnd.flatpak.ref=com.system76.CosmicStore.desktop
 x-scheme-handler/appstream=com.system76.CosmicStore.desktop
 image/bmp=org.gnome.eog.desktop
 image/gif=org.gnome.eog.desktop
