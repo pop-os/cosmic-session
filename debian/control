@@ -19,6 +19,7 @@ Depends:
   cosmic-applets,
   cosmic-bg,
   cosmic-comp,
+  cosmic-files,
   cosmic-greeter,
   cosmic-icons,
   cosmic-launcher,
@@ -36,7 +37,6 @@ Depends:
   xwayland,
 Recommends:
   cosmic-edit,
-  cosmic-files,
   cosmic-store,
   cosmic-term,
   cosmic-wallpapers,

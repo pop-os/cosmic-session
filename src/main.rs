@@ -291,6 +291,17 @@ async fn start(
 	)
 	.await;
 
+	let span = info_span!(parent: None, "cosmic-files-applet");
+	start_component(
+		"cosmic-files-applet",
+		span,
+		&process_manager,
+		&env_vars,
+		&socket_tx,
+		Vec::new(),
+	)
+	.await;
+
 	let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
 	let mut sockets = Vec::with_capacity(1);
 	let extra_env = Vec::with_capacity(1);
