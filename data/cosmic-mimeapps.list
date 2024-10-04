@@ -33,6 +33,7 @@ application/x-shellscript=com.system76.CosmicEdit.desktop
 application/xml=com.system76.CosmicEdit.desktop
 application/xml-dtd=com.system76.CosmicEdit.desktop
 inode/directory=com.system76.CosmicFiles.desktop
+inode/mount-point=com.system76.CosmicFiles.desktop
 application/x-cd-image=com.system76.Popsicle.desktop
 application/x-raw-disk-image=com.system76.Popsicle.desktop
 application/x-raw-disk-image-xz-compressed=com.system76.Popsicle.desktop
