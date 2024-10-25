@@ -9,9 +9,7 @@ mod service;
 mod systemd;
 
 use std::{
-	borrow::Cow,
-	os::fd::{AsRawFd, OwnedFd},
-	sync::Arc,
+	borrow::Cow, env, os::fd::{AsRawFd, OwnedFd}, sync::Arc
 };
 
 use async_signals::Signals;
@@ -116,6 +114,9 @@ async fn start(
 ) -> Result<Status> {
 	info!("Starting cosmic-session");
 
+	let mut args = env::args().skip(1);
+	let (executable, args) = (args.next().unwrap_or_else(|| String::from("cosmic-comp")), args.collect::<Vec<_>>());
+
 	let process_manager = ProcessManager::new().await;
 	_ = process_manager.set_max_restarts(usize::MAX).await;
 	_ = process_manager
@@ -128,6 +129,8 @@ async fn start(
 	let (env_tx, env_rx) = oneshot::channel();
 	let compositor_handle = comp::run_compositor(
 		&process_manager,
+		executable.clone(),
+		args,
 		token.child_token(),
 		socket_rx,
 		env_tx,
