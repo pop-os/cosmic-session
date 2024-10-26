@@ -346,7 +346,7 @@ async fn start(
 	)
 	.await;
 
-	if env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("COSMIC") {
+	if env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("cosmic") {
 		let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
 		let mut sockets = Vec::with_capacity(1);
 		let extra_env = Vec::with_capacity(1);
