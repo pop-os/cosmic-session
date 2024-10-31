@@ -10,17 +10,7 @@ vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
 
-xdp_cosmic := `
-if [ -f "/usr/libexec/xdg-desktop-portal-cosmic" ]; then
-    echo "/usr/libexec/xdg-desktop-portal-cosmic"
-elif [ -f "/usr/lib/xdg-desktop-portal-cosmic" ]; then
-    echo "/usr/lib/xdg-desktop-portal-cosmic"
-else
-    echo "Error: xdg-desktop-portal-cosmic not found in /usr/libexec or /usr/lib" >&2
-    exit 1
-fi
-`
-
+xdp_cosmic := env('COSMIC_DESKTOP_PORTAL', '/usr/libexec/xdg-desktop-portal-cosmic')
 
 bindir := prefix + '/bin'
 systemddir := prefix + '/lib/systemd/user'
