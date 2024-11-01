@@ -2,6 +2,7 @@
 #[macro_use]
 extern crate tracing;
 
+mod a11y;
 mod comp;
 mod notifications;
 mod process;
@@ -193,6 +194,9 @@ async fn start(
 	scopeguard::defer! {
 		systemd::stop_systemd_target();
 	}
+
+	// start a11y if configured
+	tokio::spawn(a11y::start_a11y(env_vars.clone(), process_manager.clone()));
 
 	let (panel_notifications_fd, daemon_notifications_fd) =
 		notifications::create_socket().expect("Failed to create notification socket");
