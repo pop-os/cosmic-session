@@ -10,7 +10,7 @@ vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
 
-xdp_cosmic := env('COSMIC_DESKTOP_PORTAL', '/usr/libexec/xdg-desktop-portal-cosmic')
+xdp_cosmic := env('LIBEXECDIR', '/usr/libexec') + '/xdg-desktop-portal-cosmic'
 orca := '/usr/bin/orca'
 
 bindir := prefix + '/bin'
