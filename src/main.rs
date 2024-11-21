@@ -162,7 +162,9 @@ async fn start(
 
 	let stdout_span = info_span!(parent: None, "cosmic-settings-daemon");
 	let stderr_span = stdout_span.clone();
-	process_manager
+	let (settings_exit_tx, settings_exit_rx) = oneshot::channel();
+	let settings_exit_tx = Arc::new(std::sync::Mutex::new(Some(settings_exit_tx)));
+	let settings_daemon = process_manager
 		.start(
 			Process::new()
 				.with_executable("cosmic-settings-daemon")
@@ -179,6 +181,14 @@ async fn start(
 						warn!("{}", line);
 					}
 					.instrument(stderr_span)
+				})
+				.with_on_exit(move |_, _, _, will_restart| {
+					if !will_restart {
+						if let Some(tx) = settings_exit_tx.lock().unwrap().take() {
+							_ = tx.send(());
+						}
+					}
+					async {}
 				}),
 		)
 		.await
@@ -403,6 +413,17 @@ async fn start(
 	}
 	compositor_handle.abort();
 	token.cancel();
+	if let Err(err) = process_manager.stop_process(settings_daemon).await {
+		tracing::error!("Failed to gracefully stop settings daemon. {err:?}");
+	} else {
+		match tokio::time::timeout(Duration::from_secs(1), settings_exit_rx).await {
+			Ok(Ok(_)) => {}
+			_ => {
+				tracing::error!("Failed to gracefully stop settings daemon.");
+			}
+		};
+	};
+
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(status)
 }
