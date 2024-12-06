@@ -11,6 +11,7 @@ debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
 xdp_cosmic := '/usr/libexec/xdg-desktop-portal-cosmic'
 orca := '/usr/bin/orca'
+cosmic_dconf_profile := '/usr/share/dconf/profile/cosmic'
 
 bindir := prefix + '/bin'
 systemddir := prefix + '/lib/systemd/user'
@@ -29,6 +30,7 @@ install:
 
 	# session start script
 	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
+	sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{cosmic_dconf_profile}}|" {{bindir}}/start-cosmic
 	
 	# systemd target
 	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target
