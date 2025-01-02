@@ -24,7 +24,7 @@ use futures_util::StreamExt;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
 #[cfg(feature = "systemd")]
-use systemd::{is_systemd_used, spawn_scope};
+use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
 use tokio::{
 	net::UnixStream,
 	sync::{
@@ -159,6 +159,35 @@ async fn start(
 	std::env::set_var("XDG_SESSION_TYPE", "wayland");
 	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
+
+	#[cfg(feature = "systemd")]
+	if *is_systemd_used() {
+		match get_systemd_env().await {
+			Ok(env) => {
+				for systemd_env in env {
+					// Only update the envvar if unset
+					if std::env::var_os(&systemd_env.key) == None {
+						// Blacklist of envvars that we shouldn't touch (taken from KDE)
+						if (!systemd_env.key.starts_with("XDG_") || systemd_env.key == "XDG_DATA_DIRS" || systemd_env.key == "XDG_CONFIG_DIRS") &&
+							systemd_env.key != "DISPLAY" &&
+							systemd_env.key != "XAUTHORITY" &&
+							systemd_env.key != "WAYLAND_DISPLAY" &&
+							systemd_env.key != "WAYLAND_SOCKET" &&
+							systemd_env.key != "_" &&
+							systemd_env.key != "SHELL" &&
+							systemd_env.key != "SHLVL" {
+								std::env::set_var(systemd_env.key, systemd_env.value);
+						}
+					}
+				}
+			}
+			Err(err) => {
+				warn!(
+					"Failed to sync systemd environment {}.", err
+				);
+			}
+		}
+	}
 
 	let stdout_span = info_span!(parent: None, "cosmic-settings-daemon");
 	let stderr_span = stdout_span.clone();

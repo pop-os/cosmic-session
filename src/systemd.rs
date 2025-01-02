@@ -7,6 +7,18 @@ use std::sync::OnceLock;
 use zbus::zvariant::{Array, OwnedValue};
 use zbus::Connection;
 
+#[derive(Debug)]
+pub struct EnvVar {
+	pub key: String,
+	pub value: String,
+}
+
+impl Into<EnvVar> for (&str, &str) {
+	fn into(self) -> EnvVar {
+		EnvVar { key: self.0.to_owned(), value: self.1.to_owned() }
+	}
+}
+
 #[cfg(feature = "systemd")]
 use zbus_systemd::systemd1::ManagerProxy as SystemdManagerProxy;
 
@@ -35,6 +47,21 @@ pub fn stop_systemd_target() {
 pub fn is_systemd_used() -> &'static bool {
 	static IS_SYSTEMD_USED: OnceLock<bool> = OnceLock::new();
 	IS_SYSTEMD_USED.get_or_init(|| Path::new("/run/systemd/system").exists())
+}
+
+#[cfg(feature = "systemd")]
+pub async fn get_systemd_env() -> Result<Vec<EnvVar>, zbus::Error> {
+	let connection = Connection::session().await?;
+	let systemd_manager = SystemdManagerProxy::new(&connection).await?;
+	let systemd_env = systemd_manager.environment().await?;
+
+	let mut out: Vec<EnvVar> = Vec::new();
+	for i in systemd_env {
+		if let Some(b) = i.split_once("=") {
+			out.push(b.into());
+		}
+	}
+	Ok(out)
 }
 
 #[cfg(feature = "systemd")]
