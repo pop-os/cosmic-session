@@ -10,6 +10,8 @@ vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
 xdp_cosmic := '/usr/libexec/xdg-desktop-portal-cosmic'
+orca := '/usr/bin/orca'
+cosmic_dconf_profile := '/usr/share/dconf/profile/cosmic'
 
 bindir := prefix + '/bin'
 systemddir := prefix + '/lib/systemd/user'
@@ -19,7 +21,7 @@ applicationdir := prefix + '/share/applications'
 all: _extract_vendor build
 
 build:
-        XDP_COSMIC={{xdp_cosmic}} cargo build {{cargo_args}}
+        XDP_COSMIC={{xdp_cosmic}} ORCA={{orca}} cargo build {{cargo_args}}
 
 # Installs files into the system
 install:
@@ -28,6 +30,7 @@ install:
 
 	# session start script
 	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
+	sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{cosmic_dconf_profile}}|" {{bindir}}/start-cosmic
 	
 	# systemd target
 	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target

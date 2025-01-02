@@ -2,6 +2,7 @@
 #[macro_use]
 extern crate tracing;
 
+mod a11y;
 mod comp;
 mod notifications;
 mod process;
@@ -10,6 +11,7 @@ mod systemd;
 
 use std::{
 	borrow::Cow,
+	env,
 	os::fd::{AsRawFd, OwnedFd},
 	sync::Arc,
 };
@@ -78,9 +80,10 @@ async fn main() -> Result<()> {
 	let session_tx_clone = session_tx.clone();
 	let _conn = ConnectionBuilder::session()?
 		.name("com.system76.CosmicSession")?
-		.serve_at("/com/system76/CosmicSession", service::SessionService {
-			session_tx,
-		})?
+		.serve_at(
+			"/com/system76/CosmicSession",
+			service::SessionService { session_tx },
+		)?
 		.build()
 		.await?;
 
@@ -115,6 +118,12 @@ async fn start(
 ) -> Result<Status> {
 	info!("Starting cosmic-session");
 
+	let mut args = env::args().skip(1);
+	let (executable, args) = (
+		args.next().unwrap_or_else(|| String::from("cosmic-comp")),
+		args.collect::<Vec<_>>(),
+	);
+
 	let process_manager = ProcessManager::new().await;
 	_ = process_manager.set_max_restarts(usize::MAX).await;
 	_ = process_manager
@@ -127,6 +136,8 @@ async fn start(
 	let (env_tx, env_rx) = oneshot::channel();
 	let compositor_handle = comp::run_compositor(
 		&process_manager,
+		executable.clone(),
+		args,
 		token.child_token(),
 		socket_rx,
 		env_tx,
@@ -149,8 +160,37 @@ async fn start(
 	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
 
-	process_manager
-		.start(Process::new().with_executable("cosmic-settings-daemon"))
+	let stdout_span = info_span!(parent: None, "cosmic-settings-daemon");
+	let stderr_span = stdout_span.clone();
+	let (settings_exit_tx, settings_exit_rx) = oneshot::channel();
+	let settings_exit_tx = Arc::new(std::sync::Mutex::new(Some(settings_exit_tx)));
+	let settings_daemon = process_manager
+		.start(
+			Process::new()
+				.with_executable("cosmic-settings-daemon")
+				.with_on_stdout(move |_, _, line| {
+					let stdout_span = stdout_span.clone();
+					async move {
+						info!("{}", line);
+					}
+					.instrument(stdout_span)
+				})
+				.with_on_stderr(move |_, _, line| {
+					let stderr_span = stderr_span.clone();
+					async move {
+						warn!("{}", line);
+					}
+					.instrument(stderr_span)
+				})
+				.with_on_exit(move |_, _, _, will_restart| {
+					if !will_restart {
+						if let Some(tx) = settings_exit_tx.lock().unwrap().take() {
+							_ = tx.send(());
+						}
+					}
+					async {}
+				}),
+		)
 		.await
 		.expect("failed to start settings daemon");
 
@@ -164,6 +204,9 @@ async fn start(
 	scopeguard::defer! {
 		systemd::stop_systemd_target();
 	}
+
+	// start a11y if configured
+	tokio::spawn(a11y::start_a11y(env_vars.clone(), process_manager.clone()));
 
 	let (panel_notifications_fd, daemon_notifications_fd) =
 		notifications::create_socket().expect("Failed to create notification socket");
@@ -302,26 +345,39 @@ async fn start(
 	)
 	.await;
 
-	let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
-	let mut sockets = Vec::with_capacity(1);
-	let extra_env = Vec::with_capacity(1);
-	let portal_extras =
-		if let Ok((mut env, fd)) = create_privileged_socket(&mut sockets, &extra_env) {
-			let mut env = env.remove(0);
-			env.0 = "PORTAL_WAYLAND_SOCKET".to_string();
-			vec![(fd, env, sockets.remove(0))]
-		} else {
-			Vec::new()
-		};
+	let span = info_span!(parent: None, "cosmic-idle");
 	start_component(
-		XDP_COSMIC.unwrap_or("/usr/libexec/xdg-desktop-portal-cosmic"),
+		"cosmic-idle",
 		span,
 		&process_manager,
 		&env_vars,
 		&socket_tx,
-		portal_extras,
+		Vec::new(),
 	)
 	.await;
+
+	if env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("COSMIC") {
+		let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
+		let mut sockets = Vec::with_capacity(1);
+		let extra_env = Vec::with_capacity(1);
+		let portal_extras =
+			if let Ok((mut env, fd)) = create_privileged_socket(&mut sockets, &extra_env) {
+				let mut env = env.remove(0);
+				env.0 = "PORTAL_WAYLAND_SOCKET".to_string();
+				vec![(fd, env, sockets.remove(0))]
+			} else {
+				Vec::new()
+			};
+		start_component(
+			XDP_COSMIC.unwrap_or("/usr/libexec/xdg-desktop-portal-cosmic"),
+			span,
+			&process_manager,
+			&env_vars,
+			&socket_tx,
+			portal_extras,
+		)
+		.await;
+	}
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	let mut status = Status::Exited;
@@ -357,6 +413,17 @@ async fn start(
 	}
 	compositor_handle.abort();
 	token.cancel();
+	if let Err(err) = process_manager.stop_process(settings_daemon).await {
+		tracing::error!("Failed to gracefully stop settings daemon. {err:?}");
+	} else {
+		match tokio::time::timeout(Duration::from_secs(1), settings_exit_rx).await {
+			Ok(Ok(_)) => {}
+			_ => {
+				tracing::error!("Failed to gracefully stop settings daemon.");
+			}
+		};
+	};
+
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(status)
 }

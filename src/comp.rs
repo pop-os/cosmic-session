@@ -173,6 +173,8 @@ async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Re
 
 pub fn run_compositor(
 	process_manager: &ProcessManager,
+	exec: String,
+	args: Vec<String>,
 	_token: CancellationToken,
 	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
@@ -200,7 +202,8 @@ pub fn run_compositor(
 		process_manager
 			.start_process(
 				Process::new()
-					.with_executable("cosmic-comp")
+					.with_executable(exec)
+					.with_args(args)
 					.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())])
 					.with_on_exit(move |pman, _, err_code, _will_restart| {
 						let session_dbus_tx = session_dbus_tx.clone();
