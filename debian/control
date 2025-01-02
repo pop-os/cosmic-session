@@ -37,6 +37,7 @@ Depends:
   xwayland,
 Recommends:
   cosmic-edit,
+  cosmic-player,
   cosmic-store,
   cosmic-term,
   cosmic-wallpapers,
