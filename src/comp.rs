@@ -14,6 +14,7 @@ use tokio::{
 	task::JoinHandle,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument;
 
 use crate::{process::mark_as_not_cloexec, service::SessionRequest};
 
@@ -199,12 +200,28 @@ pub fn run_compositor(
 	Ok(tokio::spawn(async move {
 		// Create a new process handler for cosmic-comp, with our compositor socket's
 		// file descriptor as the `COSMIC_SESSION_SOCK` environment variable.
+		let stdout_span = info_span!(parent: None, "cosmic-comp");
+		let stderr_span = stdout_span.clone();
 		process_manager
 			.start_process(
 				Process::new()
 					.with_executable(exec)
 					.with_args(args)
 					.with_env([("COSMIC_SESSION_SOCK", comp.as_raw_fd().to_string())])
+					.with_on_stdout(move |_, _, line| {
+						let stdout_span = stdout_span.clone();
+						async move {
+							info!("{}", line);
+						}
+						.instrument(stdout_span)
+					})
+					.with_on_stderr(move |_, _, line| {
+						let stderr_span = stderr_span.clone();
+						async move {
+							warn!("{}", line);
+						}
+						.instrument(stderr_span)
+					})
 					.with_on_exit(move |pman, _, err_code, _will_restart| {
 						let session_dbus_tx = session_dbus_tx.clone();
 						async move {
