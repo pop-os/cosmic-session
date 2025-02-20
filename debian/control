@@ -32,6 +32,7 @@ Depends:
   cosmic-settings,
   cosmic-settings-daemon,
   cosmic-workspaces,
+  fonts-open-sans,
   pop-fonts,
   switcheroo-control,
   xdg-desktop-portal-cosmic,
