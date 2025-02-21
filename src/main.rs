@@ -486,14 +486,15 @@ async fn start(
 
 		let mut dedupe = HashSet::new();
 
-		let iter = freedesktop_desktop_entry::Iter::new(directories_to_scan);
-		for entry in iter.entries(None) {
+		let iter = freedesktop_desktop_entry::Iter::new(directories_to_scan.into_iter());
+		let autostart_env = env_vars.clone();
+		for entry in iter.entries::<&str>(None) {
 			// we've already tried to execute this!
 			if dedupe.contains(&entry.appid) {
 				continue;
 			}
 
-			info!("trying to start appid {} ({})", entry.appid, entry.path);
+			info!("trying to start appid {} ({})", entry.appid, entry.path.display());
 
 			if let Some(exec_raw) = entry.exec() {
 				let mut exec_words = exec_raw.split(" ");
@@ -510,6 +511,11 @@ async fn start(
 						let mut command = Command::new(program_name);
 						command.args(args);
 
+						// add relevant envs
+						for (k, v) in &autostart_env {
+							command.env(k, v);
+						}
+
 						// detach stdin/out/err (should we?)
 						let child = command
 							.stdin(Stdio::null())
@@ -518,7 +524,7 @@ async fn start(
 							.spawn();
 
 						if let Ok(child) = child {
-							info!("successfully started program {}", entry.appid);
+							info!("successfully started program {} {}", entry.appid, child.id());
 							dedupe.insert(entry.appid);
 						}
 						else {
