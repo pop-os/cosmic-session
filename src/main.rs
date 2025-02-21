@@ -15,12 +15,15 @@ use std::{
 	os::fd::{AsRawFd, OwnedFd},
 	sync::Arc,
 };
-
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
+use itertools::Itertools;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
 #[cfg(feature = "systemd")]
@@ -40,6 +43,7 @@ use zbus::ConnectionBuilder;
 
 use crate::notifications::notifications_process;
 const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
+const AUTOSTART_DIR: &'static str = "autostart";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -452,6 +456,83 @@ async fn start(
 			}
 		};
 	};
+
+	if !*is_systemd_used() {
+		info!("looking for autostart folders");
+		let mut directories_to_scan = Vec::new();
+
+		// we start by taking user specific directories, so that we can deduplicate and ensure
+		// user overrides are respected
+
+		// user specific directories
+		if let Some(user_config_dir) = dirs::config_dir() {
+			directories_to_scan.push(user_config_dir.join(AUTOSTART_DIR));
+		}
+
+		// system-wide directories
+		if let Some(xdg_config_dirs) = env::var_os("XDG_CONFIG_DIRS") {
+			let xdg_config_dirs = String::from(xdg_config_dirs).split(":");
+
+			for dir in xdg_config_dirs {
+				directories_to_scan.push(PathBuf::from(dir).join(AUTOSTART_DIR));
+			}
+		}
+		else {
+			directories_to_scan.push(PathBuf::from("/etc/xdg/").join(AUTOSTART_DIR));
+		}
+
+		info!("found autostart folders: {:?}", directories_to_scan);
+
+		let mut dedupe = HashSet::new();
+
+		let iter = freedesktop_desktop_entry::Iter::new(directories_to_scan);
+		for entry in iter.entries(None) {
+			// we've already tried to execute this!
+			if dedupe.contains(&entry.appid) {
+				continue;
+			}
+
+			info!("trying to start appid {} ({})", entry.appid, entry.path);
+
+			if let Some(exec_raw) = entry.exec() {
+				let mut exec_words = exec_raw.split(" ");
+
+				if let Some(program_name) = exec_words.next() {
+					// filter out any placeholder args, since we might not be able to deal with them
+					let filtered_args = exec_words.filter(|s| !s.starts_with("%")).collect_vec();
+
+					// escape them
+					let escaped_args = shell_words::split(&*filtered_args.join(" "));
+					if let Ok(args) = escaped_args {
+						info!("trying to start {} {}", program_name, args.join(" "));
+
+						let mut command = Command::new(program_name);
+						command.args(args);
+
+						// detach stdin/out/err (should we?)
+						let child = command
+							.stdin(Stdio::null())
+							.stdout(Stdio::null())
+							.stderr(Stdio::null())
+							.spawn();
+
+						if let Ok(child) = child {
+							info!("successfully started program {}", entry.appid);
+							dedupe.insert(entry.appid);
+						}
+						else {
+							info!("could not start program {}", entry.appid);
+						}
+					}
+					else {
+						let why = escaped_args.unwrap_err();
+						error!(?why, "could not parse arguments");
+					}
+				}
+			}
+		}
+		info!("started {} programs", dedupe.len());
+	}
 
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(status)

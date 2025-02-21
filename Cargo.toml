@@ -12,8 +12,9 @@ async-signals = "0.4"
 color-eyre = "0.6"
 futures-util = "0.3"
 cosmic-dbus-a11y = { git = "https://github.com/pop-os/dbus-settings-bindings" }
-
-# launch-pad = { git = "https://github.com/pop-os/launch-pad" }
+freedesktop-desktop-entry = "0.7.7"
+shell-words = "1.1.0"
+dirs = "6.0.0"
 itertools = "0.12"
 launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 libc = "0.2"
