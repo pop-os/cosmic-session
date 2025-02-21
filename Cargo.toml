@@ -12,9 +12,9 @@ async-signals = "0.4"
 color-eyre = "0.6"
 futures-util = "0.3"
 cosmic-dbus-a11y = { git = "https://github.com/pop-os/dbus-settings-bindings" }
-freedesktop-desktop-entry = "0.7.7"
-shell-words = "1.1.0"
-dirs = "6.0.0"
+freedesktop-desktop-entry = { version = "0.7.7", optional = true }
+shell-words = { version = "1.1.0", optional = true }
+dirs = { version = "6.0.0", optional = true }
 itertools = "0.12"
 launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 libc = "0.2"
@@ -50,3 +50,4 @@ cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notificati
 [features]
 systemd = ["dep:zbus_systemd", "dep:tracing-journald"]
 default = ["systemd"]
+autostart = ["dep:shell-words", "dep:dirs", "dep:freedesktop-desktop-entry"]

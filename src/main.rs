@@ -457,6 +457,7 @@ async fn start(
 		};
 	};
 
+	#[cfg(feature = "autostart")]
 	if !*is_systemd_used() {
 		info!("looking for autostart folders");
 		let mut directories_to_scan = Vec::new();
