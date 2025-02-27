@@ -14,11 +14,15 @@ use color_eyre::{eyre::WrapErr, Result};
 use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
+#[cfg(feature = "autostart")]
 use itertools::Itertools;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
+#[cfg(feature = "autostart")]
 use std::collections::HashSet;
+#[cfg(feature = "autostart")]
 use std::path::PathBuf;
+#[cfg(feature = "autostart")]
 use std::process::{Command, Stdio};
 use std::{
 	borrow::Cow,
@@ -43,7 +47,9 @@ use zbus::ConnectionBuilder;
 
 use crate::notifications::notifications_process;
 const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
+#[cfg(feature = "autostart")]
 const AUTOSTART_DIR: &'static str = "autostart";
+#[cfg(feature = "autostart")]
 const ENVIRONMENT_NAME: &'static str = "COSMIC";
 
 #[tokio::main(flavor = "current_thread")]
