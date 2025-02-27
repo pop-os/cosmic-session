@@ -9,15 +9,6 @@ mod process;
 mod service;
 mod systemd;
 
-use std::{
-	borrow::Cow,
-	env,
-	os::fd::{AsRawFd, OwnedFd},
-	sync::Arc,
-};
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
 use async_signals::Signals;
 use color_eyre::{eyre::WrapErr, Result};
 use comp::create_privileged_socket;
@@ -26,6 +17,15 @@ use futures_util::StreamExt;
 use itertools::Itertools;
 use launch_pad::{process::Process, ProcessManager};
 use service::SessionRequest;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
+use std::{
+	borrow::Cow,
+	env,
+	os::fd::{AsRawFd, OwnedFd},
+	sync::Arc,
+};
 #[cfg(feature = "systemd")]
 use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
 use tokio::{
@@ -44,6 +44,7 @@ use zbus::ConnectionBuilder;
 use crate::notifications::notifications_process;
 const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
 const AUTOSTART_DIR: &'static str = "autostart";
+const ENVIRONMENT_NAME: &'static str = "COSMIC";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -172,23 +173,24 @@ async fn start(
 					// Only update the envvar if unset
 					if std::env::var_os(&systemd_env.key) == None {
 						// Blacklist of envvars that we shouldn't touch (taken from KDE)
-						if (!systemd_env.key.starts_with("XDG_") || systemd_env.key == "XDG_DATA_DIRS" || systemd_env.key == "XDG_CONFIG_DIRS") &&
-							systemd_env.key != "DISPLAY" &&
-							systemd_env.key != "XAUTHORITY" &&
-							systemd_env.key != "WAYLAND_DISPLAY" &&
-							systemd_env.key != "WAYLAND_SOCKET" &&
-							systemd_env.key != "_" &&
-							systemd_env.key != "SHELL" &&
-							systemd_env.key != "SHLVL" {
-								std::env::set_var(systemd_env.key, systemd_env.value);
+						if (!systemd_env.key.starts_with("XDG_")
+							|| systemd_env.key == "XDG_DATA_DIRS"
+							|| systemd_env.key == "XDG_CONFIG_DIRS")
+							&& systemd_env.key != "DISPLAY"
+							&& systemd_env.key != "XAUTHORITY"
+							&& systemd_env.key != "WAYLAND_DISPLAY"
+							&& systemd_env.key != "WAYLAND_SOCKET"
+							&& systemd_env.key != "_"
+							&& systemd_env.key != "SHELL"
+							&& systemd_env.key != "SHLVL"
+						{
+							std::env::set_var(systemd_env.key, systemd_env.value);
 						}
 					}
 				}
 			}
 			Err(err) => {
-				warn!(
-					"Failed to sync systemd environment {}.", err
-				);
+				warn!("Failed to sync systemd environment {}.", err);
 			}
 		}
 	}
@@ -472,13 +474,15 @@ async fn start(
 
 		// system-wide directories
 		if let Some(xdg_config_dirs) = env::var_os("XDG_CONFIG_DIRS") {
-			let xdg_config_dirs = String::from(xdg_config_dirs).split(":");
+			let xdg_config_dirs = xdg_config_dirs
+				.into_string()
+				.expect("Invalid XDG_CONFIG_DIRS");
+			let dir_list = xdg_config_dirs.split(":");
 
-			for dir in xdg_config_dirs {
+			for dir in dir_list {
 				directories_to_scan.push(PathBuf::from(dir).join(AUTOSTART_DIR));
 			}
-		}
-		else {
+		} else {
 			directories_to_scan.push(PathBuf::from("/etc/xdg/").join(AUTOSTART_DIR));
 		}
 
@@ -494,7 +498,25 @@ async fn start(
 				continue;
 			}
 
-			info!("trying to start appid {} ({})", entry.appid, entry.path.display());
+			// skip if we have an OnlyShowIn entry that doesn't include COSMIC
+			if let Some(only_show_in) = entry.only_show_in() {
+				if !only_show_in.contains(&ENVIRONMENT_NAME) {
+					continue;
+				}
+			}
+
+			// ... OR we have a NotShowIn entry that includes COSMIC
+			if let Some(not_show_in) = entry.not_show_in() {
+				if not_show_in.contains(&ENVIRONMENT_NAME) {
+					continue;
+				}
+			}
+
+			info!(
+				"trying to start appid {} ({})",
+				entry.appid,
+				entry.path.display()
+			);
 
 			if let Some(exec_raw) = entry.exec() {
 				let mut exec_words = exec_raw.split(" ");
@@ -524,14 +546,16 @@ async fn start(
 							.spawn();
 
 						if let Ok(child) = child {
-							info!("successfully started program {} {}", entry.appid, child.id());
+							info!(
+								"successfully started program {} {}",
+								entry.appid,
+								child.id()
+							);
 							dedupe.insert(entry.appid);
-						}
-						else {
+						} else {
 							info!("could not start program {}", entry.appid);
 						}
-					}
-					else {
+					} else {
 						let why = escaped_args.unwrap_err();
 						error!(?why, "could not parse arguments");
 					}

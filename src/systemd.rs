@@ -15,7 +15,10 @@ pub struct EnvVar {
 
 impl Into<EnvVar> for (&str, &str) {
 	fn into(self) -> EnvVar {
-		EnvVar { key: self.0.to_owned(), value: self.1.to_owned() }
+		EnvVar {
+			key: self.0.to_owned(),
+			value: self.1.to_owned(),
+		}
 	}
 }
 
