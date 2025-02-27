@@ -40,7 +40,7 @@ export DCONF_PROFILE=cosmic
 
 if command -v systemctl >/dev/null; then
     # set environment variables for new units started by user service manager
-    systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP
+    systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE
 fi
 # Run cosmic-session
 if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
