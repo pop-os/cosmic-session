@@ -561,7 +561,7 @@ async fn start(
 	compositor_handle.abort();
 	token.cancel();
 	if let Err(err) = process_manager.stop_process(settings_daemon).await {
-		tracing::error!("Failed to gracefully stop settings daemon. {err:?}");
+		tracing::error!(?err, "Failed to gracefully stop settings daemon.");
 	} else {
 		match tokio::time::timeout(Duration::from_secs(1), settings_exit_rx).await {
 			Ok(Ok(_)) => {}
