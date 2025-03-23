@@ -420,51 +420,6 @@ async fn start(
 		.await;
 	}
 
-	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
-	let mut status = Status::Exited;
-	loop {
-		let session_dbus_rx_next = session_rx.recv();
-		tokio::select! {
-			res = session_dbus_rx_next => {
-				match res {
-					Some(service::SessionRequest::Exit) => {
-						info!("EXITING: session exited by request");
-						break;
-					}
-					Some(service::SessionRequest::Restart) => {
-						info!("RESTARTING: session restarted by request");
-						status = Status::Restarted;
-						break;
-					}
-					None => {
-						warn!("exit channel dropped session");
-						break;
-					}
-				}
-			},
-			signal = signals.next() => match signal {
-				Some(libc::SIGTERM | libc::SIGINT) => {
-					info!("EXITING: received request to terminate");
-					break;
-				}
-				Some(signal) => unreachable!("EXITING: received unhandled signal {}", signal),
-				None => break,
-			}
-		}
-	}
-	compositor_handle.abort();
-	token.cancel();
-	if let Err(err) = process_manager.stop_process(settings_daemon).await {
-		tracing::error!("Failed to gracefully stop settings daemon. {err:?}");
-	} else {
-		match tokio::time::timeout(Duration::from_secs(1), settings_exit_rx).await {
-			Ok(Ok(_)) => {}
-			_ => {
-				tracing::error!("Failed to gracefully stop settings daemon.");
-			}
-		};
-	};
-
 	#[cfg(feature = "autostart")]
 	if !*is_systemd_used() {
 		info!("looking for autostart folders");
@@ -570,6 +525,46 @@ async fn start(
 		}
 		info!("started {} programs", dedupe.len());
 	}
+
+	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
+	let mut status = Status::Exited;
+	let session_dbus_rx_next = session_rx.recv();
+	tokio::select! {
+		res = session_dbus_rx_next => {
+			match res {
+				Some(service::SessionRequest::Exit) => {
+					info!("EXITING: session exited by request");
+				}
+				Some(service::SessionRequest::Restart) => {
+					info!("RESTARTING: session restarted by request");
+					status = Status::Restarted;
+				}
+				None => {
+					warn!("exit channel dropped session");
+				}
+			}
+		},
+		signal = signals.next() => match signal {
+			Some(libc::SIGTERM | libc::SIGINT) => {
+				info!("EXITING: received request to terminate");
+			}
+			Some(signal) => unreachable!("EXITING: received unhandled signal {}", signal),
+			None => {},
+		}
+	}
+
+	compositor_handle.abort();
+	token.cancel();
+	if let Err(err) = process_manager.stop_process(settings_daemon).await {
+		tracing::error!(?err, "Failed to gracefully stop settings daemon.");
+	} else {
+		match tokio::time::timeout(Duration::from_secs(1), settings_exit_rx).await {
+			Ok(Ok(_)) => {}
+			_ => {
+				tracing::error!("Settings daemon process did not respond to the request to stop.");
+			}
+		};
+	};
 
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(status)
