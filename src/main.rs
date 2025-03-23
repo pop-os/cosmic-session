@@ -528,36 +528,31 @@ async fn start(
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	let mut status = Status::Exited;
-	loop {
-		let session_dbus_rx_next = session_rx.recv();
-		tokio::select! {
-			res = session_dbus_rx_next => {
-				match res {
-					Some(service::SessionRequest::Exit) => {
-						info!("EXITING: session exited by request");
-						break;
-					}
-					Some(service::SessionRequest::Restart) => {
-						info!("RESTARTING: session restarted by request");
-						status = Status::Restarted;
-						break;
-					}
-					None => {
-						warn!("exit channel dropped session");
-						break;
-					}
+	let session_dbus_rx_next = session_rx.recv();
+	tokio::select! {
+		res = session_dbus_rx_next => {
+			match res {
+				Some(service::SessionRequest::Exit) => {
+					info!("EXITING: session exited by request");
 				}
-			},
-			signal = signals.next() => match signal {
-				Some(libc::SIGTERM | libc::SIGINT) => {
-					info!("EXITING: received request to terminate");
-					break;
+				Some(service::SessionRequest::Restart) => {
+					info!("RESTARTING: session restarted by request");
+					status = Status::Restarted;
 				}
-				Some(signal) => unreachable!("EXITING: received unhandled signal {}", signal),
-				None => break,
+				None => {
+					warn!("exit channel dropped session");
+				}
 			}
+		},
+		signal = signals.next() => match signal {
+			Some(libc::SIGTERM | libc::SIGINT) => {
+				info!("EXITING: received request to terminate");
+			}
+			Some(signal) => unreachable!("EXITING: received unhandled signal {}", signal),
+			None => {},
 		}
 	}
+
 	compositor_handle.abort();
 	token.cancel();
 	if let Err(err) = process_manager.stop_process(settings_daemon).await {
@@ -566,7 +561,7 @@ async fn start(
 		match tokio::time::timeout(Duration::from_secs(1), settings_exit_rx).await {
 			Ok(Ok(_)) => {}
 			_ => {
-				tracing::error!("Failed to gracefully stop settings daemon.");
+				tracing::error!("Settings daemon process did not respond to the request to stop.");
 			}
 		};
 	};
