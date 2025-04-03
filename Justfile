@@ -41,6 +41,9 @@ install:
 	# mimeapps
 	install -Dm0644 data/cosmic-mimeapps.list {{applicationdir}}/cosmic-mimeapps.list
 
+	# dconf profile
+	install -Dm644 data/dconf/profile/cosmic {{cosmic_dconf_profile}}
+
 clean_vendor:
 	rm -rf vendor vendor.tar .cargo/config
 
