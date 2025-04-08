@@ -1,6 +1,6 @@
 rootdir := ''
-etcdir := rootdir + '/etc'
-prefix := rootdir + '/usr'
+etcdir := '/etc'
+prefix := '/usr'
 clean := '0'
 debug := '0'
 vendor := '0'
@@ -13,10 +13,10 @@ xdp_cosmic := '/usr/libexec/xdg-desktop-portal-cosmic'
 orca := '/usr/bin/orca'
 cosmic_dconf_profile := prefix + '/share/dconf/profile/cosmic'
 
-bindir := prefix + '/bin'
-systemddir := prefix + '/lib/systemd/user'
-sessiondir := prefix + '/share/wayland-sessions'
-applicationdir := prefix + '/share/applications'
+bindir := rootdir / prefix + '/bin'
+systemddir := rootdir / prefix + '/lib/systemd/user'
+sessiondir := rootdir / prefix + '/share/wayland-sessions'
+applicationdir := rootdir / prefix + '/share/applications'
 
 all: _extract_vendor build
 
@@ -25,24 +25,25 @@ build:
 
 # Installs files into the system
 install:
+	echo {{cosmic_dconf_profile}}
 	# main binary
 	install -Dm0755 {{cargo-target-dir}}/release/cosmic-session {{bindir}}/cosmic-session
 
 	# session start script
 	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
 	sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{cosmic_dconf_profile}}|" {{bindir}}/start-cosmic
-	
+
 	# systemd target
 	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target
-	
-	# session	
+
+	# session
 	install -Dm0644 data/cosmic.desktop {{sessiondir}}/cosmic.desktop
 
 	# mimeapps
 	install -Dm0644 data/cosmic-mimeapps.list {{applicationdir}}/cosmic-mimeapps.list
 
 	# dconf profile
-	install -Dm644 data/dconf/profile/cosmic {{cosmic_dconf_profile}}
+	install -Dm644 data/dconf/profile/cosmic {{rootdir}}/{{cosmic_dconf_profile}}
 
 clean_vendor:
 	rm -rf vendor vendor.tar .cargo/config
