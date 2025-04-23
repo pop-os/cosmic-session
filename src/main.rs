@@ -670,5 +670,11 @@ async fn start_component(
 				.with_fds(move || fds),
 		)
 		.await
-		.unwrap_or_else(|_| panic!("failed to start {}", cmd));
+		.unwrap_or_else(|err| {
+			let stderr_span = stderr_span.clone();
+			async move {
+				error!("failed to start {}: {}", cmd, err);
+			}
+			.instrument(stderr_span)
+		});
 }
