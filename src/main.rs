@@ -599,7 +599,7 @@ async fn start_component(
 	}
 	let (extra_fd_env, _): (Vec<_>, Vec<_>) = extra_fd_env.into_iter().unzip();
 	fds.push(fd);
-	process_manager
+	if let Err(err) = process_manager
 		.start(
 			Process::new()
 				.with_executable(cmd.clone())
@@ -670,11 +670,7 @@ async fn start_component(
 				.with_fds(move || fds),
 		)
 		.await
-		.unwrap_or_else(|err| {
-			let stderr_span = stderr_span.clone();
-			async move {
-				error!("failed to start {}: {}", cmd, err);
-			}
-			.instrument(stderr_span)
-		});
+	{
+		error!("failed to start {}: {}", cmd, err);
+	}
 }
