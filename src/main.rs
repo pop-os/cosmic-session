@@ -584,6 +584,7 @@ async fn start_component(
 	let socket_tx_clone = socket_tx.clone();
 	let stdout_span = span.clone();
 	let stderr_span = span.clone();
+	let stderr_span_clone = stderr_span.clone();
 	let cmd = cmd.into();
 	let cmd_clone = cmd.clone();
 
@@ -671,6 +672,7 @@ async fn start_component(
 		)
 		.await
 	{
+		let _enter = stderr_span_clone.enter();
 		error!("failed to start {}: {}", cmd, err);
 	}
 }
