@@ -40,7 +40,13 @@ export DCONF_PROFILE=cosmic
 
 if command -v dbus-update-activation-environment >/dev/null; then
     # set environment variables for new units started by user service manager
-    dbus-update-activation-environment --systemd XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE
+    dbus-update-activation-environment --systemd \
+        DCONF_PROFILE \
+        DISPLAY \
+        WAYLAND_DISPLAY \
+        XDG_CURRENT_DESKTOP \
+        XDG_SESSION_TYPE \
+        # EOF
 fi
 # Run cosmic-session
 if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
