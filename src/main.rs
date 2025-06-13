@@ -43,7 +43,6 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{metadata::LevelFilter, Instrument};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
-use zbus::ConnectionBuilder;
 
 use crate::notifications::notifications_process;
 const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
@@ -89,7 +88,7 @@ async fn main() -> Result<()> {
 
 	let (session_tx, mut session_rx) = tokio::sync::mpsc::channel(10);
 	let session_tx_clone = session_tx.clone();
-	let _conn = ConnectionBuilder::session()?
+	let _conn = zbus::connection::Builder::session()?
 		.name("com.system76.CosmicSession")?
 		.serve_at(
 			"/com/system76/CosmicSession",
@@ -172,7 +171,7 @@ async fn start(
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
 
 	#[cfg(feature = "systemd")]
-	if *is_systemd_used() {
+	let _inhibit_fd = if *is_systemd_used() {
 		match get_systemd_env().await {
 			Ok(env) => {
 				for systemd_env in env {
@@ -198,8 +197,40 @@ async fn start(
 			Err(err) => {
 				warn!("Failed to sync systemd environment {}.", err);
 			}
+		};
+		#[cfg(feature = "logind")]
+		match zbus::Connection::system().await {
+			Ok(connection) => match logind_zbus::manager::ManagerProxy::new(&connection).await {
+				Ok(proxy) => match proxy
+					.inhibit(
+						logind_zbus::manager::InhibitType::HandlePowerKey,
+						"Cosmic Session",
+						"Show confirmation dialog.",
+						"block",
+					)
+					.await
+				{
+					Ok(fd) => Some(fd),
+					Err(err) => {
+						error!("Failed to inhibit power key {err:?}");
+						None
+					}
+				},
+				Err(err) => {
+					error!("Failed to connect to logind manager {err:?}");
+					None
+				}
+			},
+			Err(err) => {
+				error!("Failed to connect to system dbus {err:?}");
+				None
+			}
 		}
-	}
+		#[cfg(not(feature = "logind"))]
+		None
+	} else {
+		None
+	};
 
 	let stdout_span = info_span!(parent: None, "cosmic-settings-daemon");
 	let stderr_span = stdout_span.clone();
