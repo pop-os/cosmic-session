@@ -122,6 +122,111 @@ pub enum Status {
 	Exited,
 }
 
+#[cfg(feature = "autostart")]
+fn autostart(autostart_env: &[(String, String)]) {
+	info!("looking for autostart folders");
+	let mut directories_to_scan = Vec::new();
+
+	// we start by taking user specific directories, so that we can deduplicate and ensure
+	// user overrides are respected
+
+	// user specific directories
+	if let Some(user_config_dir) = dirs::config_dir() {
+		directories_to_scan.push(user_config_dir.join(AUTOSTART_DIR));
+	}
+
+	// system-wide directories
+	if let Some(xdg_config_dirs) = env::var_os("XDG_CONFIG_DIRS") {
+		let xdg_config_dirs = xdg_config_dirs
+			.into_string()
+			.expect("Invalid XDG_CONFIG_DIRS");
+		let dir_list = xdg_config_dirs.split(":");
+
+		for dir in dir_list {
+			directories_to_scan.push(PathBuf::from(dir).join(AUTOSTART_DIR));
+		}
+	} else {
+		directories_to_scan.push(PathBuf::from("/etc/xdg/").join(AUTOSTART_DIR));
+	}
+
+	info!("found autostart folders: {:?}", directories_to_scan);
+
+	let mut dedupe = HashSet::new();
+
+	let iter = freedesktop_desktop_entry::Iter::new(directories_to_scan.into_iter());
+	for entry in iter.entries::<&str>(None) {
+		// we've already tried to execute this!
+		if dedupe.contains(&entry.appid) {
+			continue;
+		}
+
+		// skip if we have an OnlyShowIn entry that doesn't include COSMIC
+		if let Some(only_show_in) = entry.only_show_in() {
+			if !only_show_in.contains(&ENVIRONMENT_NAME) {
+				continue;
+			}
+		}
+
+		// ... OR we have a NotShowIn entry that includes COSMIC
+		if let Some(not_show_in) = entry.not_show_in() {
+			if not_show_in.contains(&ENVIRONMENT_NAME) {
+				continue;
+			}
+		}
+
+		info!(
+			"trying to start appid {} ({})",
+			entry.appid,
+			entry.path.display()
+		);
+
+		if let Some(exec_raw) = entry.exec() {
+			let mut exec_words = exec_raw.split(" ");
+
+			if let Some(program_name) = exec_words.next() {
+				// filter out any placeholder args, since we might not be able to deal with them
+				let filtered_args = exec_words.filter(|s| !s.starts_with("%")).collect_vec();
+
+				// escape them
+				let escaped_args = shell_words::split(&*filtered_args.join(" "));
+				if let Ok(args) = escaped_args {
+					info!("trying to start {} {}", program_name, args.join(" "));
+
+					let mut command = Command::new(program_name);
+					command.args(args);
+
+					// add relevant envs
+					for (k, v) in autostart_env {
+						command.env(k, v);
+					}
+
+					// detach stdin/out/err (should we?)
+					let child = command
+						.stdin(Stdio::null())
+						.stdout(Stdio::null())
+						.stderr(Stdio::null())
+						.spawn();
+
+					if let Ok(child) = child {
+						info!(
+							"successfully started program {} {}",
+							entry.appid,
+							child.id()
+						);
+						dedupe.insert(entry.appid);
+					} else {
+						info!("could not start program {}", entry.appid);
+					}
+				} else {
+					let why = escaped_args.unwrap_err();
+					error!(?why, "could not parse arguments");
+				}
+			}
+		}
+	}
+	info!("started {} programs", dedupe.len());
+}
+
 async fn start(
 	session_tx: Sender<SessionRequest>,
 	session_rx: &mut Receiver<SessionRequest>,
@@ -451,111 +556,12 @@ async fn start(
 		.await;
 	}
 
-	#[cfg(feature = "autostart")]
+	#[cfg(all(feature = "autostart", feature = "systemd"))]
 	if !*is_systemd_used() {
-		info!("looking for autostart folders");
-		let mut directories_to_scan = Vec::new();
-
-		// we start by taking user specific directories, so that we can deduplicate and ensure
-		// user overrides are respected
-
-		// user specific directories
-		if let Some(user_config_dir) = dirs::config_dir() {
-			directories_to_scan.push(user_config_dir.join(AUTOSTART_DIR));
-		}
-
-		// system-wide directories
-		if let Some(xdg_config_dirs) = env::var_os("XDG_CONFIG_DIRS") {
-			let xdg_config_dirs = xdg_config_dirs
-				.into_string()
-				.expect("Invalid XDG_CONFIG_DIRS");
-			let dir_list = xdg_config_dirs.split(":");
-
-			for dir in dir_list {
-				directories_to_scan.push(PathBuf::from(dir).join(AUTOSTART_DIR));
-			}
-		} else {
-			directories_to_scan.push(PathBuf::from("/etc/xdg/").join(AUTOSTART_DIR));
-		}
-
-		info!("found autostart folders: {:?}", directories_to_scan);
-
-		let mut dedupe = HashSet::new();
-
-		let iter = freedesktop_desktop_entry::Iter::new(directories_to_scan.into_iter());
-		let autostart_env = env_vars.clone();
-		for entry in iter.entries::<&str>(None) {
-			// we've already tried to execute this!
-			if dedupe.contains(&entry.appid) {
-				continue;
-			}
-
-			// skip if we have an OnlyShowIn entry that doesn't include COSMIC
-			if let Some(only_show_in) = entry.only_show_in() {
-				if !only_show_in.contains(&ENVIRONMENT_NAME) {
-					continue;
-				}
-			}
-
-			// ... OR we have a NotShowIn entry that includes COSMIC
-			if let Some(not_show_in) = entry.not_show_in() {
-				if not_show_in.contains(&ENVIRONMENT_NAME) {
-					continue;
-				}
-			}
-
-			info!(
-				"trying to start appid {} ({})",
-				entry.appid,
-				entry.path.display()
-			);
-
-			if let Some(exec_raw) = entry.exec() {
-				let mut exec_words = exec_raw.split(" ");
-
-				if let Some(program_name) = exec_words.next() {
-					// filter out any placeholder args, since we might not be able to deal with them
-					let filtered_args = exec_words.filter(|s| !s.starts_with("%")).collect_vec();
-
-					// escape them
-					let escaped_args = shell_words::split(&*filtered_args.join(" "));
-					if let Ok(args) = escaped_args {
-						info!("trying to start {} {}", program_name, args.join(" "));
-
-						let mut command = Command::new(program_name);
-						command.args(args);
-
-						// add relevant envs
-						for (k, v) in &autostart_env {
-							command.env(k, v);
-						}
-
-						// detach stdin/out/err (should we?)
-						let child = command
-							.stdin(Stdio::null())
-							.stdout(Stdio::null())
-							.stderr(Stdio::null())
-							.spawn();
-
-						if let Ok(child) = child {
-							info!(
-								"successfully started program {} {}",
-								entry.appid,
-								child.id()
-							);
-							dedupe.insert(entry.appid);
-						} else {
-							info!("could not start program {}", entry.appid);
-						}
-					} else {
-						let why = escaped_args.unwrap_err();
-						error!(?why, "could not parse arguments");
-					}
-				}
-			}
-		}
-		info!("started {} programs", dedupe.len());
+		autostart(&env_vars);
 	}
+	#[cfg(all(feature = "autostart", not(feature = "systemd")))]
+	autostart(&env_vars);
 
 	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
 	let mut status = Status::Exited;
