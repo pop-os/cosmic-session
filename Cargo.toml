@@ -53,3 +53,6 @@ systemd = ["dep:zbus_systemd", "dep:tracing-journald"]
 logind = ["systemd", "logind-zbus"]
 default = ["logind"]
 autostart = ["dep:shell-words", "dep:dirs", "dep:freedesktop-desktop-entry"]
+
+[profile.release]
+strip = true
