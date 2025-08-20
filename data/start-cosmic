@@ -51,12 +51,8 @@ fi
 
 # Start gnome keyring components if the daemon is active
 if systemctl is-active --user --quiet gnome-keyring-daemon.service; then
-    # Start ssh component
-    /usr/bin/gnome-keyring-daemon --start --components=ssh
 
-    # start secrets component
-    /usr/bin/gnome-keyring-daemon --start --components=secrets
+    # start pkcs11, secrets, and ssh components
+    /usr/bin/gnome-keyring-daemon --start --components=pkcs11,secrets,ssh
 
-    # start pkcs11 component
-    /usr/bin/gnome-keyring-daemon --start --components=pkcs11
 fi
