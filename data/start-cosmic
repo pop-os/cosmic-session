@@ -42,12 +42,6 @@ if command -v systemctl >/dev/null; then
     # set environment variables for new units started by user service manager
     systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE
 fi
-# Run cosmic-session
-if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
-    exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
-else
-    exec /usr/bin/cosmic-session
-fi
 
 # Start gnome keyring components if the daemon is active
 # -> check if /run/user/$UID/keyring exists
@@ -55,5 +49,13 @@ if [ -d "/run/user/$(id -u)/keyring" ]; then
 
     # start pkcs11, secrets, and ssh components
     /usr/bin/gnome-keyring-daemon --start --components=pkcs11,secrets,ssh
+    export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
 
+fi
+
+# Run cosmic-session
+if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
+    exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
+else
+    exec /usr/bin/cosmic-session
 fi
