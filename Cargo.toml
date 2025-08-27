@@ -4,6 +4,7 @@ description = "The session manager for the COSMIC desktop environment"
 version = "0.1.0"
 license = "GPL-3.0-only"
 edition = "2024"
+rust-version = "1.85"
 authors = ["Lucy <lucy@system76.com>"]
 publish = false
 
@@ -12,14 +13,14 @@ async-signals = "0.5"
 color-eyre = "0.6"
 futures-util = "0.3"
 cosmic-dbus-a11y = { git = "https://github.com/pop-os/dbus-settings-bindings" }
-freedesktop-desktop-entry = { version = "0.7.7", optional = true }
+freedesktop-desktop-entry = { version = "0.7.14", optional = true }
 shell-words = { version = "1.1.0", optional = true }
 dirs = { version = "6.0.0", optional = true }
-itertools = "0.12"
+itertools = "0.14"
 launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 libc = "0.2"
 log-panics = { version = "2", features = ["with-backtrace"] }
-rustix = "0.38"
+rustix = "1.0"
 scopeguard = "1"
 sendfd = { version = "0.4", features = ["tokio"] }
 serde = { version = "1", features = ["derive"] }
@@ -44,7 +45,7 @@ tokio-util = "0.7"
 tracing = "0.1"
 tracing-journald = { version = "0.3", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-zbus = { version = "5.7.0", default-features = false, features = ["tokio"] }
+zbus = { version = "5.10.0", default-features = false, features = ["tokio"] }
 cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications" }
 logind-zbus = { version = "5.3.2", optional = true }
 
