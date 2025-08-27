@@ -10,13 +10,13 @@ mod service;
 mod systemd;
 
 use async_signals::Signals;
-use color_eyre::{eyre::WrapErr, Result};
+use color_eyre::{Result, eyre::WrapErr};
 use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
 #[cfg(feature = "autostart")]
 use itertools::Itertools;
-use launch_pad::{process::Process, ProcessManager};
+use launch_pad::{ProcessManager, process::Process};
 use service::SessionRequest;
 #[cfg(feature = "autostart")]
 use std::collections::HashSet;
@@ -35,14 +35,15 @@ use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
 use tokio::{
 	net::UnixStream,
 	sync::{
+		Mutex,
 		mpsc::{self, Receiver, Sender},
-		oneshot, Mutex,
+		oneshot,
 	},
 	time::Duration,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{metadata::LevelFilter, Instrument};
-use tracing_subscriber::{fmt, prelude::*, EnvFilter};
+use tracing::{Instrument, metadata::LevelFilter};
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use crate::notifications::notifications_process;
 const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
@@ -166,7 +167,6 @@ async fn start(
 	);
 
 	// now that cosmic-comp is ready, set XDG_SESSION_TYPE=wayland for new processes
-	std::env::set_var("XDG_SESSION_TYPE", "wayland");
 	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
 
@@ -189,7 +189,7 @@ async fn start(
 							&& systemd_env.key != "SHELL"
 							&& systemd_env.key != "SHLVL"
 						{
-							std::env::set_var(systemd_env.key, systemd_env.value);
+							env_vars.push((systemd_env.key, systemd_env.value));
 						}
 					}
 				}
@@ -456,8 +456,8 @@ async fn start(
 		info!("looking for autostart folders");
 		let mut directories_to_scan = Vec::new();
 
-		// we start by taking user specific directories, so that we can deduplicate and ensure
-		// user overrides are respected
+		// we start by taking user specific directories, so that we can deduplicate and
+		// ensure user overrides are respected
 
 		// user specific directories
 		if let Some(user_config_dir) = dirs::config_dir() {

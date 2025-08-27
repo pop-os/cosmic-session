@@ -1,12 +1,12 @@
-use color_eyre::{eyre::Context, Result};
+use color_eyre::{Result, eyre::Context};
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
-use launch_pad::{process::Process, ProcessKey};
+use launch_pad::{ProcessKey, process::Process};
 use rustix::fd::AsRawFd;
 use std::{
 	os::{fd::OwnedFd, unix::net::UnixStream},
 	sync::Arc,
 };
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 use tracing::Instrument;
 
 use crate::comp::create_privileged_socket;
