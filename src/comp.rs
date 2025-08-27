@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use color_eyre::eyre::{Result, WrapErr};
-use launch_pad::{process::Process, ProcessManager};
+use launch_pad::{ProcessManager, process::Process};
 use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, os::unix::prelude::*};
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
 	net::{
-		unix::{OwnedReadHalf, OwnedWriteHalf},
 		UnixStream,
+		unix::{OwnedReadHalf, OwnedWriteHalf},
 	},
 	sync::{mpsc, oneshot},
 	task::JoinHandle,

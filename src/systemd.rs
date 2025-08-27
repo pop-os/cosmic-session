@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::sync::OnceLock;
+use std::{
+	path::Path,
+	process::{Command, Stdio},
+	sync::OnceLock,
+};
 
-use zbus::zvariant::{Array, OwnedValue};
-use zbus::Connection;
+use zbus::{
+	Connection,
+	zvariant::{Array, OwnedValue},
+};
 
 #[derive(Debug)]
 pub struct EnvVar {
@@ -46,7 +50,8 @@ pub fn stop_systemd_target() {
 	)
 }
 
-///Determine if systemd is used as the init system. This should work on all linux distributions.
+/// Determine if systemd is used as the init system. This should work on all
+/// linux distributions.
 pub fn is_systemd_used() -> &'static bool {
 	static IS_SYSTEMD_USED: OnceLock<bool> = OnceLock::new();
 	IS_SYSTEMD_USED.get_or_init(|| Path::new("/run/systemd/system").exists())
@@ -68,7 +73,7 @@ pub async fn get_systemd_env() -> Result<Vec<EnvVar>, zbus::Error> {
 }
 
 #[cfg(feature = "systemd")]
-///Spawn a systemd scope unit with the given name and PIDs.
+/// Spawn a systemd scope unit with the given name and PIDs.
 pub async fn spawn_scope(mut command: String, pids: Vec<u32>) -> Result<(), zbus::Error> {
 	let connection = Connection::session().await?;
 	let systemd_manager = SystemdManagerProxy::new(&connection).await?;
