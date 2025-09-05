@@ -47,10 +47,15 @@ fi
 # -> check if /run/user/$UID/keyring exists
 if [ -d "/run/user/$(id -u)/keyring" ]; then
 
-    # start pkcs11, secrets, and ssh components
-    /usr/bin/gnome-keyring-daemon --start --components=pkcs11,secrets,ssh
-    export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
+    # Use PATH lookup instead of hardcoding /usr/bin
+    if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+        eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh)"
+    else
+        echo "gnome-keyring-daemon not found in PATH" >&2
+    fi
 
+    # Set SSH_AUTH_SOCK to the standard gnome-keyring socket
+    export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
 fi
 
 # Run cosmic-session
