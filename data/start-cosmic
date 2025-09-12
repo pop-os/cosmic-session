@@ -49,7 +49,7 @@ if [ -d "/run/user/$(id -u)/keyring" ]; then
 
     # Use PATH lookup instead of hardcoding /usr/bin
     if command -v gnome-keyring-daemon >/dev/null 2>&1; then
-        eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh)"
+        eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh > /dev/null 2>&1)"
     else
         echo "gnome-keyring-daemon not found in PATH" >&2
     fi

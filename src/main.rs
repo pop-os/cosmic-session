@@ -65,7 +65,6 @@ async fn main() -> Result<()> {
 	if let Ok(journald) = tracing_journald::layer() {
 		trace
 			.with(journald)
-			.with(fmt::layer())
 			.with(env_filter)
 			.try_init()
 			.wrap_err("failed to initialize logger")?;
