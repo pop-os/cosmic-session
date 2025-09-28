@@ -52,9 +52,14 @@ pub fn stop_systemd_target() {
 
 /// Determine if systemd is used as the init system. This should work on all
 /// linux distributions.
+#[cfg(feature = "systemd")]
 pub fn is_systemd_used() -> &'static bool {
 	static IS_SYSTEMD_USED: OnceLock<bool> = OnceLock::new();
 	IS_SYSTEMD_USED.get_or_init(|| Path::new("/run/systemd/system").exists())
+}
+#[cfg(not(feature = "systemd"))]
+pub fn is_systemd_used() -> &'static bool {
+	&false
 }
 
 #[cfg(feature = "systemd")]
