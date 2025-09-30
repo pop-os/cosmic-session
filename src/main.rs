@@ -46,7 +46,6 @@ use tracing::{Instrument, metadata::LevelFilter};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
 use crate::notifications::notifications_process;
-const XDP_COSMIC: Option<&'static str> = option_env!("XDP_COSMIC");
 #[cfg(feature = "autostart")]
 const AUTOSTART_DIR: &'static str = "autostart";
 #[cfg(feature = "autostart")]
@@ -426,29 +425,6 @@ async fn start(
 		Vec::new(),
 	)
 	.await;
-
-	if env::var("XDG_CURRENT_DESKTOP").as_deref() == Ok("COSMIC") {
-		let span = info_span!(parent: None, "xdg-desktop-portal-cosmic");
-		let mut sockets = Vec::with_capacity(1);
-		let extra_env = Vec::with_capacity(1);
-		let portal_extras =
-			if let Ok((mut env, fd)) = create_privileged_socket(&mut sockets, &extra_env) {
-				let mut env = env.remove(0);
-				env.0 = "PORTAL_WAYLAND_SOCKET".to_string();
-				vec![(fd, env, sockets.remove(0))]
-			} else {
-				Vec::new()
-			};
-		start_component(
-			XDP_COSMIC.unwrap_or("/usr/libexec/xdg-desktop-portal-cosmic"),
-			span,
-			&process_manager,
-			&env_vars,
-			&socket_tx,
-			portal_extras,
-		)
-		.await;
-	}
 
 	#[cfg(feature = "autostart")]
 	if !*is_systemd_used() {
