@@ -14,6 +14,7 @@ use color_eyre::{Result, eyre::WrapErr};
 use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
+use futures_util::stream::FuturesUnordered;
 #[cfg(feature = "autostart")]
 use itertools::Itertools;
 use launch_pad::{ProcessManager, process::Process};
@@ -32,6 +33,7 @@ use std::{
 };
 #[cfg(feature = "systemd")]
 use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::{
 	net::UnixStream,
 	sync::{
@@ -338,93 +340,7 @@ async fn start(
 	);
 	drop(guard);
 
-	let span = info_span!(parent: None, "cosmic-app-library");
-	start_component(
-		"cosmic-app-library",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-launcher");
-	start_component(
-		"cosmic-launcher",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-workspaces");
-	start_component(
-		"cosmic-workspaces",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-osd");
-	start_component(
-		"cosmic-osd",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-bg");
-	start_component(
-		"cosmic-bg",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-greeter");
-	start_component(
-		"cosmic-greeter",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-files-applet");
-	start_component(
-		"cosmic-files-applet",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
-
-	let span = info_span!(parent: None, "cosmic-idle");
-	start_component(
-		"cosmic-idle",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	spawn_components(&process_manager, &env_vars, &socket_tx).await;
 
 	#[cfg(feature = "autostart")]
 	if !*is_systemd_used() {
@@ -574,6 +490,34 @@ async fn start(
 
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(status)
+}
+
+/// Spawn desktop components concurrently with the process manager.
+async fn spawn_components(
+	process_manager: &ProcessManager,
+	env_vars: &[(String, String)],
+	socket_tx: &UnboundedSender<Vec<UnixStream>>,
+) {
+	let components = [
+		"cosmic-app-library",
+		"cosmic-bg",
+		"cosmic-files-applet",
+		"cosmic-greeter",
+		"cosmic-idle",
+		"cosmic-launcher",
+		"cosmic-osd",
+		"cosmic-workspaces",
+	];
+
+	components
+		.into_iter()
+		.map(|name| async move {
+			let span = info_span!(parent: None, "{}", name);
+			start_component(name, span, process_manager, env_vars, socket_tx, Vec::new()).await;
+		})
+		.collect::<FuturesUnordered<_>>()
+		.collect::<Vec<()>>()
+		.await;
 }
 
 async fn start_component(
