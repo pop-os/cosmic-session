@@ -1,0 +1,29 @@
+name: test
+
+on:
+  push:
+    branches:
+      - master
+
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-hack
+
+      - name: Check
+        run: cargo hack check --feature-powerset
+
+      - name: Build
+        run: cargo hack build --feature-powerset
+
+      - name: Test
+        env:
+          RUST_BACKTRACE: full
+        run: cargo hack test --feature-powerset

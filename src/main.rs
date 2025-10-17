@@ -30,8 +30,9 @@ use std::{
 	os::fd::{AsRawFd, OwnedFd},
 	sync::Arc,
 };
+use systemd::is_systemd_used;
 #[cfg(feature = "systemd")]
-use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
+use systemd::{get_systemd_env, spawn_scope};
 use tokio::{
 	net::UnixStream,
 	sync::{
