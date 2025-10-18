@@ -55,33 +55,7 @@ const ENVIRONMENT_NAME: &'static str = "COSMIC";
 async fn main() -> Result<()> {
 	color_eyre::install().wrap_err("failed to install color_eyre error handler")?;
 
-	let trace = tracing_subscriber::registry();
-	let env_filter = EnvFilter::builder()
-		.with_default_directive(LevelFilter::INFO.into())
-		.from_env_lossy();
-
-	#[cfg(feature = "systemd")]
-	if let Ok(journald) = tracing_journald::layer() {
-		trace
-			.with(journald)
-			.with(env_filter)
-			.try_init()
-			.wrap_err("failed to initialize logger")?;
-	} else {
-		trace
-			.with(fmt::layer())
-			.with(env_filter)
-			.try_init()
-			.wrap_err("failed to initialize logger")?;
-		warn!("failed to connect to journald")
-	}
-
-	#[cfg(not(feature = "systemd"))]
-	trace
-		.with(fmt::layer())
-		.with(env_filter)
-		.try_init()
-		.wrap_err("failed to initialize logger")?;
+	init_logger().wrap_err("failed to initialize logger")?;
 
 	log_panics::init();
 
@@ -681,4 +655,31 @@ async fn start_component(
 		let _enter = stderr_span_clone.enter();
 		error!("failed to start {}: {}", cmd, err);
 	}
+}
+
+fn init_logger() -> Result<(), tracing_subscriber::util::TryInitError> {
+	let env_filter = EnvFilter::builder()
+		.with_default_directive(LevelFilter::INFO.into())
+		.from_env_lossy();
+
+	let registry = tracing_subscriber::registry();
+
+	#[cfg(feature = "systemd")]
+	if let Ok(journald_layer) = tracing_journald::layer() {
+		return registry.with(journald_layer).with(env_filter).try_init();
+	};
+
+	#[cfg(feature = "syslog")]
+	{
+		let (options, facility) = Default::default();
+
+		// NOTE: Can only return `None` if already initialized.
+		let syslog = syslog_tracing::Syslog::new(c"cosmic-session", options, facility).unwrap();
+		let syslog_layer = fmt::layer().with_writer(syslog);
+
+		registry.with(syslog_layer).with(env_filter).try_init()
+	}
+
+	#[cfg(not(feature = "syslog"))]
+	registry.with(fmt::layer()).with(env_filter).try_init()
 }
