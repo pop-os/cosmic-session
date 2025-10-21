@@ -6,10 +6,8 @@ use std::{
 	os::{fd::OwnedFd, unix::net::UnixStream},
 	sync::Arc,
 };
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::Mutex;
 use tracing::Instrument;
-
-use crate::comp::create_privileged_socket;
 
 pub fn create_socket() -> Result<(OwnedFd, OwnedFd)> {
 	// Create a new pair of unnamed Unix sockets
@@ -38,20 +36,15 @@ pub fn notifications_process(
 	restart_cmd: &'static str,
 	restart_key: Arc<Mutex<Option<ProcessKey>>>,
 	restart_env_vars: Vec<(String, String)>,
-	socket_tx: mpsc::UnboundedSender<Vec<tokio::net::UnixStream>>,
 ) -> Process {
 	env_vars.retain(|v| &v.0 != "WAYLAND_SOCKET");
 
 	let stdout_span = span.clone();
 	let stderr_span = span.clone();
-	let mut sockets = Vec::with_capacity(1);
-	let (env_vars, privileged_fd) = create_privileged_socket(&mut sockets, &env_vars).unwrap();
-	_ = socket_tx.send(sockets);
 	let env_clone = env_vars.clone();
-	let socket_tx_clone = socket_tx.clone();
 	Process::new()
 		.with_executable(cmd)
-		.with_fds(move || vec![privileged_fd, fd])
+		.with_fds(move || vec![fd])
 		.with_on_stdout(move |_, _, line| {
 			let stdout_span = stdout_span.clone();
 			async move {
@@ -96,26 +89,17 @@ pub fn notifications_process(
 				cmd,
 				key.clone(),
 				my_env_vars.clone(),
-				socket_tx_clone.clone(),
 			);
 			let restart_key = restart_key.clone();
-			let socket_tx_clone = socket_tx_clone.clone();
 
 			let mut pman_clone = pman.clone();
 			async move {
 				if will_restart {
-					let mut sockets = Vec::with_capacity(1);
-					let (env_vars, new_fd) =
-						create_privileged_socket(&mut sockets, &my_env_vars).unwrap();
-
-					if let Err(why) = socket_tx_clone.send(sockets) {
-						error!(?why, "Failed to send the privileged socket");
-					}
-					if let Err(why) = pman_clone.update_process_env(&my_key, env_vars).await {
+					if let Err(why) = pman_clone.update_process_env(&my_key, my_env_vars).await {
 						error!(?why, "Failed to update environment variables");
 					}
 					if let Err(why) = pman_clone
-						.update_process_fds(&my_key, move || vec![new_fd, my_fd])
+						.update_process_fds(&my_key, move || vec![my_fd])
 						.await
 					{
 						error!(?why, "Failed to update fds");

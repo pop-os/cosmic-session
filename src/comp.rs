@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use color_eyre::eyre::{Result, WrapErr};
 use launch_pad::{ProcessManager, process::Process};
-use sendfd::SendWithFd;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, os::unix::prelude::*};
 use tokio::{
-	io::{AsyncReadExt, AsyncWriteExt},
-	net::{
-		UnixStream,
-		unix::{OwnedReadHalf, OwnedWriteHalf},
-	},
+	io::AsyncReadExt,
+	net::{UnixStream, unix::OwnedReadHalf},
 	sync::{mpsc, oneshot},
 	task::JoinHandle,
 };
@@ -21,7 +17,6 @@ use crate::{process::mark_as_not_cloexec, service::SessionRequest};
 #[serde(rename_all = "snake_case", tag = "message")]
 pub enum Message {
 	SetEnv { variables: HashMap<String, String> },
-	NewPrivilegedClient { count: usize },
 }
 
 // Cancellation safe!
@@ -39,9 +34,6 @@ fn parse_and_handle_ipc(state: &mut IpcState) {
 			if let Some(env_tx) = state.env_tx.take() {
 				env_tx.send(variables).unwrap();
 			}
-		}
-		Ok(Message::NewPrivilegedClient { .. }) => {
-			unreachable!("NewPrivilegedClient should not be sent TO the session!");
 		}
 		Err(_) => {
 			warn!(
@@ -101,82 +93,11 @@ async fn receive_ipc(state: &mut IpcState, rx: &mut OwnedReadHalf) -> Result<()>
 	}
 }
 
-pub fn create_privileged_socket(
-	sockets: &mut Vec<UnixStream>,
-	env_vars: &[(String, String)],
-) -> Result<(Vec<(String, String)>, OwnedFd)> {
-	// Create a new pair of unnamed Unix sockets
-	let (comp_socket, client_socket) =
-		UnixStream::pair().wrap_err("failed to create socket pair")?;
-	// Push one socket to the list of sockets we were passed
-	sockets.push(comp_socket);
-	// Turn the other socket into a non-blocking fd, which we can pass to the child
-	// process
-	let client_fd = {
-		let std_stream = client_socket
-			.into_std()
-			.wrap_err("failed to convert client socket to std socket")?;
-		std_stream
-			.set_nonblocking(true)
-			.wrap_err("failed to mark client socket as non-blocking")?;
-		OwnedFd::from(std_stream)
-	};
-	let mut env_vars = env_vars.to_vec();
-	env_vars.push(("WAYLAND_SOCKET".into(), client_fd.as_raw_fd().to_string()));
-	Ok((env_vars, client_fd))
-}
-
-async fn send_fd(session_tx: &mut OwnedWriteHalf, stream: Vec<UnixStream>) -> Result<()> {
-	// Turn our list of Unix streams into non-blocking file descriptors.
-	let fds = stream
-		.into_iter()
-		.map(|stream| {
-			let std_stream = stream
-				.into_std()
-				.wrap_err("failed to convert stream to std stream")?;
-			std_stream
-				.set_nonblocking(false)
-				.wrap_err("failed to set stream as blocking")?;
-			Ok(OwnedFd::from(std_stream))
-		})
-		.collect::<Result<Vec<_>>>()
-		.wrap_err("failed to convert streams to file descriptors")?;
-	// Create a NewPrivilegedClient message, with a count of how many file
-	// descriptors we are about to send.
-	let json = serde_json::to_string(&Message::NewPrivilegedClient { count: fds.len() })
-		.wrap_err("failed to encode json")?;
-	// Send the length of our NewPrivilegedClient message.
-	session_tx
-		.write_all(&(json.len() as u16).to_le_bytes())
-		.await
-		.wrap_err("failed to write length")?;
-	// Send our NewPrivilegedClient message, in JSON form.
-	session_tx
-		.write_all(json.as_bytes())
-		.await
-		.wrap_err("failed to write json")?;
-	// Wait 100 us for the session to acknowledge our message.
-	tokio::time::sleep(std::time::Duration::from_micros(100)).await;
-	// Send our file descriptors.
-	let fd: &UnixStream = session_tx.as_ref();
-	info!("sending {} fds", fds.len());
-
-	fd.send_with_fd(
-		&[0],
-		&fds.into_iter()
-			.map(|fd| fd.into_raw_fd())
-			.collect::<Vec<_>>(),
-	)
-	.wrap_err("failed to send fd")?;
-	Ok(())
-}
-
 pub fn run_compositor(
 	process_manager: &ProcessManager,
 	exec: String,
 	args: Vec<String>,
 	_token: CancellationToken,
-	mut socket_rx: mpsc::UnboundedReceiver<Vec<UnixStream>>,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
 	session_dbus_tx: mpsc::Sender<SessionRequest>,
 ) -> Result<JoinHandle<Result<()>>> {
@@ -184,7 +105,7 @@ pub fn run_compositor(
 	// Create a pair of unix sockets - one for us (session),
 	// one for the compositor (comp)
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
-	let (mut session_rx, mut session_tx) = session.into_split();
+	let (mut session_rx, _session_tx) = session.into_split();
 	// Convert our compositor socket to a non-blocking file descriptor.
 	let comp = {
 		let std_stream = comp
@@ -242,12 +163,6 @@ pub fn run_compositor(
 					error!("failed to receive IPC: {:?}", err);
 					break;
 				},
-				// Send any file descriptors we need to the compositor.
-				Some(socket) = socket_rx.recv() => {
-					send_fd(&mut session_tx, socket)
-						.await
-						.wrap_err("failed to send file descriptor to compositor")?;
-				}
 			}
 		}
 		Result::<()>::Ok(())

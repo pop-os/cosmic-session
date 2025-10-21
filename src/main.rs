@@ -11,7 +11,6 @@ mod systemd;
 
 use async_signals::Signals;
 use color_eyre::{Result, eyre::WrapErr};
-use comp::create_privileged_socket;
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
 #[cfg(feature = "autostart")]
@@ -24,19 +23,13 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 #[cfg(feature = "autostart")]
 use std::process::{Command, Stdio};
-use std::{
-	borrow::Cow,
-	env,
-	os::fd::{AsRawFd, OwnedFd},
-	sync::Arc,
-};
+use std::{borrow::Cow, env, os::fd::AsRawFd, sync::Arc};
 #[cfg(feature = "systemd")]
 use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
 use tokio::{
-	net::UnixStream,
 	sync::{
 		Mutex,
-		mpsc::{self, Receiver, Sender},
+		mpsc::{Receiver, Sender},
 		oneshot,
 	},
 	time::Duration,
@@ -141,14 +134,12 @@ async fn start(
 		))
 		.await;
 	let token = CancellationToken::new();
-	let (socket_tx, socket_rx) = mpsc::unbounded_channel();
 	let (env_tx, env_rx) = oneshot::channel();
 	let compositor_handle = comp::run_compositor(
 		&process_manager,
 		executable.clone(),
 		args,
 		token.child_token(),
-		socket_rx,
 		env_tx,
 		session_tx,
 	)
@@ -311,7 +302,6 @@ async fn start(
 				"cosmic-panel",
 				panel_key.clone(),
 				panel_env_vars.clone(),
-				socket_tx.clone(),
 			))
 			.await
 			.expect("failed to start notifications daemon"),
@@ -331,7 +321,6 @@ async fn start(
 				"cosmic-notifications",
 				notif_key,
 				daemon_env_vars,
-				socket_tx.clone(),
 			))
 			.await
 			.expect("failed to start panel"),
@@ -339,92 +328,28 @@ async fn start(
 	drop(guard);
 
 	let span = info_span!(parent: None, "cosmic-app-library");
-	start_component(
-		"cosmic-app-library",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-app-library", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-launcher");
-	start_component(
-		"cosmic-launcher",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-launcher", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-workspaces");
-	start_component(
-		"cosmic-workspaces",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-workspaces", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-osd");
-	start_component(
-		"cosmic-osd",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-osd", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-bg");
-	start_component(
-		"cosmic-bg",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-bg", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-greeter");
-	start_component(
-		"cosmic-greeter",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-greeter", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-files-applet");
-	start_component(
-		"cosmic-files-applet",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-files-applet", span, &process_manager, &env_vars).await;
 
 	let span = info_span!(parent: None, "cosmic-idle");
-	start_component(
-		"cosmic-idle",
-		span,
-		&process_manager,
-		&env_vars,
-		&socket_tx,
-		Vec::new(),
-	)
-	.await;
+	start_component("cosmic-idle", span, &process_manager, &env_vars).await;
 
 	#[cfg(feature = "autostart")]
 	if !*is_systemd_used() {
@@ -581,31 +506,13 @@ async fn start_component(
 	span: tracing::Span,
 	process_manager: &ProcessManager,
 	env_vars: &[(String, String)],
-	socket_tx: &mpsc::UnboundedSender<Vec<UnixStream>>,
-	extra_fds: Vec<(OwnedFd, (String, String), UnixStream)>,
 ) {
-	let mut sockets = Vec::with_capacity(2);
-	let (mut env_vars, fd) = create_privileged_socket(&mut sockets, &env_vars).unwrap();
-
-	let socket_tx_clone = socket_tx.clone();
 	let stdout_span = span.clone();
 	let stderr_span = span.clone();
 	let stderr_span_clone = stderr_span.clone();
 	let cmd = cmd.into();
 	let cmd_clone = cmd.clone();
 
-	let (mut fds, extra_fd_env, mut streams): (Vec<_>, Vec<_>, Vec<_>) =
-		itertools::multiunzip(extra_fds);
-	for kv in &extra_fd_env {
-		env_vars.push(kv.clone());
-	}
-
-	sockets.append(&mut streams);
-	if let Err(why) = socket_tx.send(sockets) {
-		error!(?why, "Failed to send the privileged socket");
-	}
-	let (extra_fd_env, _): (Vec<_>, Vec<_>) = extra_fd_env.into_iter().unzip();
-	fds.push(fd);
 	if let Err(err) = process_manager
 		.start(
 			Process::new()
@@ -639,42 +546,12 @@ async fn start_component(
 						}
 					}
 				})
-				.with_on_exit(move |mut pman, key, err_code, will_restart| {
+				.with_on_exit(move |mut _pman, _key, err_code, _will_restart| {
 					if let Some(err) = err_code {
 						error!("{cmd_clone} exited with error {}", err.to_string());
 					}
-					let extra_fd_env = extra_fd_env.clone();
-					let socket_tx_clone = socket_tx_clone.clone();
-					async move {
-						if !will_restart {
-							return;
-						}
-
-						let mut sockets = Vec::with_capacity(1 + extra_fd_env.len());
-						let mut fds = Vec::with_capacity(1 + extra_fd_env.len());
-						let (mut env_vars, fd) =
-							create_privileged_socket(&mut sockets, &[]).unwrap();
-						fds.push(fd);
-						for k in extra_fd_env {
-							let (mut fd_env_vars, fd) =
-								create_privileged_socket(&mut sockets, &[]).unwrap();
-							fd_env_vars.last_mut().unwrap().0 = k;
-							env_vars.append(&mut fd_env_vars);
-							fds.push(fd)
-						}
-
-						if let Err(why) = socket_tx_clone.send(sockets) {
-							error!(?why, "Failed to send the privileged socket");
-						}
-						if let Err(why) = pman.update_process_env(&key, env_vars).await {
-							error!(?why, "Failed to update environment variables");
-						}
-						if let Err(why) = pman.update_process_fds(&key, move || fds).await {
-							error!(?why, "Failed to update fds");
-						}
-					}
-				})
-				.with_fds(move || fds),
+					async {}
+				}),
 		)
 		.await
 	{
