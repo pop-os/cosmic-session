@@ -2,7 +2,6 @@ rootdir := ''
 prefix := '/usr'
 cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
 orca := '/usr/bin/orca'
-cosmic_dconf_profile := prefix + '/share/dconf/profile/cosmic'
 usrdir := absolute_path(clean(rootdir / prefix))
 bindir := usrdir / 'bin'
 systemddir := usrdir / 'lib' / 'systemd' / 'user'
@@ -30,13 +29,11 @@ clean-dist: clean
 
 # Installs files into the system
 install:
-    echo {{ cosmic_dconf_profile }}
     # main binary
     install -Dm0755 {{ cargo-target-dir }}/release/cosmic-session {{ bindir }}/cosmic-session
 
     # session start script
     install -Dm0755 data/start-cosmic {{ bindir }}/start-cosmic
-    sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{ cosmic_dconf_profile }}|" {{ bindir }}/start-cosmic
 
     # systemd target
     install -Dm0644 data/cosmic-session.target {{ systemddir }}/cosmic-session.target
@@ -46,9 +43,6 @@ install:
 
     # mimeapps
     install -Dm0644 data/cosmic-mimeapps.list {{ applicationdir }}/cosmic-mimeapps.list
-
-    # dconf profile
-    install -Dm644 data/dconf/profile/cosmic {{ rootdir }}/{{ cosmic_dconf_profile }}
 
 # Vendor Cargo dependencies locally
 vendor:
