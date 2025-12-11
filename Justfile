@@ -10,7 +10,6 @@ vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
 debug_args := if debug == '1' { '' } else { '--release' }
 cargo_args := vendor_args + ' ' + debug_args
 orca := '/usr/bin/orca'
-cosmic_dconf_profile := prefix + '/share/dconf/profile/cosmic'
 
 bindir := rootdir / prefix + '/bin'
 systemddir := rootdir / prefix + '/lib/systemd/user'
@@ -24,13 +23,11 @@ build:
 
 # Installs files into the system
 install:
-	echo {{cosmic_dconf_profile}}
 	# main binary
 	install -Dm0755 {{cargo-target-dir}}/release/cosmic-session {{bindir}}/cosmic-session
 
 	# session start script
 	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
-	sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{cosmic_dconf_profile}}|" {{bindir}}/start-cosmic
 
 	# systemd target
 	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target
@@ -40,9 +37,6 @@ install:
 
 	# mimeapps
 	install -Dm0644 data/cosmic-mimeapps.list {{applicationdir}}/cosmic-mimeapps.list
-
-	# dconf profile
-	install -Dm644 data/dconf/profile/cosmic {{rootdir}}/{{cosmic_dconf_profile}}
 
 clean_vendor:
 	rm -rf vendor vendor.tar .cargo/config
