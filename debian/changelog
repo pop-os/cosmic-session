@@ -1,5 +1,5 @@
-cosmic-session (0.1.0) UNRELEASED; urgency=medium
+cosmic-session (1.0.0) noble; urgency=medium
 
-  * Initial release.
+  * Initial release
 
- -- Lucy <lucy@system76.com>  Thu, 07 Jul 2022 14:42:01 -0400
+ -- Michael Murphy <michael@mmurphy.dev>  Thu, 11 Dec 2025 13:49:55 +0100
