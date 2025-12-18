@@ -33,6 +33,8 @@ Depends:
   cosmic-settings-daemon,
   cosmic-workspaces,
   fonts-open-sans,
+  gnome-keyring,
+  libsecret-1-0,
   pop-fonts,
   switcheroo-control,
   xdg-desktop-portal-cosmic,
@@ -43,5 +45,6 @@ Recommends:
   cosmic-store,
   cosmic-term,
   cosmic-wallpapers,
+  orca,
   system-config-printer,
 Description: The session for the COSMIC desktop
