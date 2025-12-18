@@ -1,58 +1,75 @@
 rootdir := ''
-etcdir := '/etc'
 prefix := '/usr'
-clean := '0'
-debug := '0'
-vendor := '0'
 cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
-target := if debug == '1' { 'debug' } else { 'release' }
-vendor_args := if vendor == '1' { '--frozen --offline' } else { '' }
-debug_args := if debug == '1' { '' } else { '--release' }
-cargo_args := vendor_args + ' ' + debug_args
 orca := '/usr/bin/orca'
 cosmic_dconf_profile := prefix + '/share/dconf/profile/cosmic'
+usrdir := absolute_path(clean(rootdir / prefix))
+bindir := usrdir / 'bin'
+systemddir := usrdir / 'lib' / 'systemd' / 'user'
+sessiondir := usrdir / 'share' / 'wayland-sessions'
+applicationdir := usrdir / 'share' / 'applications'
 
-bindir := rootdir / prefix + '/bin'
-systemddir := rootdir / prefix + '/lib/systemd/user'
-sessiondir := rootdir / prefix + '/share/wayland-sessions'
-applicationdir := rootdir / prefix + '/share/applications'
+default: build-release
 
-all: _extract_vendor build
+build-debug *args:
+    ORCA={{ orca }} cargo build {{ args }}
 
-build:
-        ORCA={{orca}} cargo build {{cargo_args}}
+# Compile with release profile
+build-release *args: (build-debug '--release' args)
+
+# Compile with a vendored tarball
+build-vendored *args: vendor-extract (build-release '--frozen --offline' args)
+
+# Remove Cargo build artifacts
+clean:
+    cargo clean
+
+# Also remove .cargo and vendored dependencies
+clean-dist: clean
+    rm -rf .cargo vendor vendor.tar target
 
 # Installs files into the system
 install:
-	echo {{cosmic_dconf_profile}}
-	# main binary
-	install -Dm0755 {{cargo-target-dir}}/release/cosmic-session {{bindir}}/cosmic-session
+    echo {{ cosmic_dconf_profile }}
+    # main binary
+    install -Dm0755 {{ cargo-target-dir }}/release/cosmic-session {{ bindir }}/cosmic-session
 
-	# session start script
-	install -Dm0755 data/start-cosmic {{bindir}}/start-cosmic
-	sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{cosmic_dconf_profile}}|" {{bindir}}/start-cosmic
+    # session start script
+    install -Dm0755 data/start-cosmic {{ bindir }}/start-cosmic
+    sed -i "s|DCONF_PROFILE=cosmic|DCONF_PROFILE={{ cosmic_dconf_profile }}|" {{ bindir }}/start-cosmic
 
-	# systemd target
-	install -Dm0644 data/cosmic-session.target {{systemddir}}/cosmic-session.target
+    # systemd target
+    install -Dm0644 data/cosmic-session.target {{ systemddir }}/cosmic-session.target
 
-	# session
-	install -Dm0644 data/cosmic.desktop {{sessiondir}}/cosmic.desktop
+    # session
+    install -Dm0644 data/cosmic.desktop {{ sessiondir }}/cosmic.desktop
 
-	# mimeapps
-	install -Dm0644 data/cosmic-mimeapps.list {{applicationdir}}/cosmic-mimeapps.list
+    # mimeapps
+    install -Dm0644 data/cosmic-mimeapps.list {{ applicationdir }}/cosmic-mimeapps.list
 
-	# dconf profile
-	install -Dm644 data/dconf/profile/cosmic {{rootdir}}/{{cosmic_dconf_profile}}
+    # dconf profile
+    install -Dm644 data/dconf/profile/cosmic {{ rootdir }}/{{ cosmic_dconf_profile }}
 
-clean_vendor:
-	rm -rf vendor vendor.tar .cargo/config
+# Vendor Cargo dependencies locally
+vendor:
+    mkdir -p .cargo
+    cargo vendor | head -n -1 > .cargo/config.toml
+    echo 'directory = "vendor"' >> .cargo/config.toml
+    tar pcf vendor.tar vendor
+    rm -rf vendor
 
-clean: clean_vendor
-	cargo clean
+# Extracts vendored dependencies
+[private]
+vendor-extract:
+    rm -rf vendor
+    tar pxf vendor.tar
 
-# Extracts vendored dependencies if vendor=1
-_extract_vendor:
-	#!/usr/bin/env sh
-	if test {{vendor}} = 1; then
-		rm -rf vendor; tar pxf vendor.tar
-	fi
+# Bump cargo version, create git commit, and create tag
+tag version:
+    find -type f -name Cargo.toml -exec sed -i '0,/^version/s/^version.*/version = "{{ version }}"/' '{}' \; -exec git add '{}' \;
+    cargo check
+    cargo clean
+    git add Cargo.lock
+    git commit -m 'release: {{ version }}'
+    git commit --amend
+    git tag -a {{ version }} -m ''
