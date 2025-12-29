@@ -351,6 +351,24 @@ async fn start(
 	let span = info_span!(parent: None, "cosmic-idle");
 	start_component("cosmic-idle", span, &process_manager, &env_vars).await;
 
+	// Start nm-applet to provide NetworkManager secrets agent for VPN authentication
+	// This enables VPNs that require complex authentication flows (Duo 2FA, SAML, SSO)
+	// which need the SecretAgent D-Bus interface that cosmic-applet-network doesn't yet implement.
+	// Only start if nm-applet is available on the system.
+	if std::process::Command::new("which")
+		.arg("nm-applet")
+		.stdout(std::process::Stdio::null())
+		.stderr(std::process::Stdio::null())
+		.status()
+		.map(|s| s.success())
+		.unwrap_or(false)
+	{
+		let span = info_span!(parent: None, "nm-applet");
+		start_component("nm-applet", span, &process_manager, &env_vars).await;
+	} else {
+		info!("nm-applet not found, skipping. VPNs requiring Duo 2FA/SAML/SSO may not work.");
+	}
+
 	#[cfg(feature = "autostart")]
 	if !*is_systemd_used() {
 		info!("looking for autostart folders");
