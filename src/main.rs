@@ -13,6 +13,7 @@ use async_signals::Signals;
 use color_eyre::{Result, eyre::WrapErr};
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use futures_util::StreamExt;
+use process::mark_as_not_cloexec;
 #[cfg(feature = "autostart")]
 use itertools::Itertools;
 use launch_pad::{ProcessManager, process::Process};
@@ -271,6 +272,10 @@ async fn start(
 
 	let (panel_notifications_fd, daemon_notifications_fd) =
 		notifications::create_socket().expect("Failed to create notification socket");
+
+	mark_as_not_cloexec(&panel_notifications_fd).expect("Failed to mark panel fd as not cloexec");
+	mark_as_not_cloexec(&daemon_notifications_fd)
+		.expect("Failed to mark daemon fd as not cloexec");
 
 	let mut daemon_env_vars = env_vars.clone();
 	daemon_env_vars.push((
