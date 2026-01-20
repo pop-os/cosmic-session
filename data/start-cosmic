@@ -49,8 +49,14 @@ if [ -d "/run/user/$(id -u)/keyring" ]; then
         echo "gnome-keyring-daemon not found in PATH" >&2
     fi
 
-    # Set SSH_AUTH_SOCK to the standard gnome-keyring socket
-    export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
+    # Only set SSH_AUTH_SOCK if the socket actually exists. Either
+    # set the correct one, or don't set one at all. Don't set the
+    # wrong value.
+    if [ -S "/run/user/$(id -u)/gcr/ssh" ]; then
+        export SSH_AUTH_SOCK="/run/user/$(id -u)/gcr/ssh"
+    elif [ -S "/run/user/$(id -u)/keyring/ssh" ]; then
+        export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
+    fi
 fi
 
 if command -v systemctl >/dev/null; then
