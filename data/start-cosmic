@@ -60,8 +60,26 @@ if [ -d "/run/user/$(id -u)/keyring" ]; then
 fi
 
 if command -v systemctl >/dev/null; then
-    # set environment variables for new units started by user service manager
+    # Import some variables that we explicitly want to have available
+    # in the user session.
     systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE SSH_AUTH_SOCK
+
+    # For environment variables already imported into the user's
+    # session, if the value imported differs from the value in this
+    # environment, update it.
+    existing_env_vars=( $(systemctl --user show-environment | tr '\n' ' ') )
+    for env_var in "${existing_env_vars[@]}"; do
+        env_var_name="$(echo "${env_var}" | awk -F '=' '{print $1}')"
+        env_var_val_str_to_compare="${env_var_name}=${!env_var_name:-}"
+
+        if [[ "${env_var}" != "${env_var_val_str_to_compare}" ]]; then
+            # Update only if the value in current environment is non-empty
+            env_var_unassigned_str="${env_var_name}="
+            if [[ "${env_var_val_str_to_compare}" != "${env_var_unassigned_str}" ]]; then
+                systemctl --user import-environment "${env_var_name}" ||:
+            fi
+        fi
+    done
 fi
 
 # Run cosmic-session
