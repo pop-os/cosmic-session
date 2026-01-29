@@ -67,7 +67,7 @@ if command -v systemctl >/dev/null; then
     # For environment variables already imported into the user's
     # session, if the value imported differs from the value in this
     # environment, update it.
-    existing_env_vars=( $(systemctl --user show-environment | tr '\n' ' ') )
+    mapfile -t existing_env_vars < <(systemctl --user show-environment)
     for env_var in "${existing_env_vars[@]}"; do
         env_var_name="$(echo "${env_var}" | awk -F '=' '{print $1}')"
         env_var_val_str_to_compare="${env_var_name}=${!env_var_name:-}"
