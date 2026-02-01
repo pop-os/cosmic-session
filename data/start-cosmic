@@ -70,6 +70,12 @@ if command -v systemctl >/dev/null; then
     existing_env_vars=( $(systemctl --user show-environment | tr '\n' ' ') )
     for env_var in "${existing_env_vars[@]}"; do
         env_var_name="$(echo "${env_var}" | awk -F '=' '{print $1}')"
+
+	# Skip invalid bash variable names (systemd allows names bash does not)
+	if ! [[ "${env_var_name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+	    continue
+	fi
+
         env_var_val_str_to_compare="${env_var_name}=${!env_var_name:-}"
 
         if [[ "${env_var}" != "${env_var_val_str_to_compare}" ]]; then
