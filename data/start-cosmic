@@ -69,16 +69,23 @@ if command -v systemctl >/dev/null; then
     # environment, update it.
     mapfile -t existing_env_vars < <(systemctl --user show-environment)
     for env_var in "${existing_env_vars[@]}"; do
-        env_var_name="$(echo "${env_var}" | awk -F '=' '{print $1}')"
-        env_var_val_str_to_compare="${env_var_name}=${!env_var_name:-}"
+        env_var_name="${env_var%%=*}"
+        env_var_value=${!env_var_name:-}
 
-        if [[ "${env_var}" != "${env_var_val_str_to_compare}" ]]; then
-            # Update only if the value in current environment is non-empty
-            env_var_unassigned_str="${env_var_name}="
-            if [[ "${env_var_val_str_to_compare}" != "${env_var_unassigned_str}" ]]; then
-                systemctl --user import-environment "${env_var_name}" ||:
-            fi
+        # Skip current iteration if the environment variable's value
+        # in the current envionment is unset.
+        if [[ -z "${env_var_value}" ]]; then
+            continue
         fi
+
+        env_var_val_str_to_compare="${env_var_name}=${env_var_value}"
+        env_var_val_str_to_compare_ansi_c_quoted="${env_var_name}=\$'$(printf '%q' "${env_var_value}")'"
+        if [[ "${env_var}" == "${env_var_val_str_to_compare}" ]]; then
+            continue
+        elif [[ "${env_var}" == "${env_var_val_str_to_compare_ansi_c_quoted}" ]]; then
+            continue
+        fi
+        systemctl --user import-environment "${env_var_name}" ||:
     done
 fi
 
