@@ -39,19 +39,7 @@ export QT_ENABLE_HIGHDPI_SCALING=1
 export DCONF_PROFILE=cosmic
 
 # Set the QT platform theme to CuteCosmic if installed, otherwise qt6ct
-QT_PLUGIN_PATHS=()
-if command -v qtpaths6 >/dev/null 2>&1; then
-    QT_PLUGIN_PATHS+=($(qtpaths6 --plugin-dir))
-elif command -v qtpaths-qt6 >/dev/null 2>&1; then
-    QT_PLUGIN_PATHS+=($(qtpaths-qt6 --plugin-dir))
-elif command -v qtpaths >/dev/null 2>&1; then
-    QT_PLUGIN_PATHS+=($(qtpaths --plugin-dir))
-else
-    shopt -s nullglob
-    QT_PLUGIN_PATHS+=(/usr/lib{*,/*}/qt6/plugins)
-    shopt -u nullglob
-fi
-for QT_PLUGIN_PATH in "${QT_PLUGIN_PATHS[@]}"; do
+for QT_PLUGIN_PATH in /usr/lib{*,/*}/qt6/plugins; do
     if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
         export QT_QPA_PLATFORMTHEME=cosmic
         break
