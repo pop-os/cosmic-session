@@ -38,10 +38,11 @@ export QT_AUTO_SCREEN_SCALE_FACTOR=1
 export QT_ENABLE_HIGHDPI_SCALING=1
 export DCONF_PROFILE=cosmic
 
-# Set the QT platform theme to CuteCosmic if installed, otherwise qt6ct
+# Set the QT platform theme to CuteCosmic. Fallback to qt6ct if CuteCosmic is not installed.
+export QT_QPA_PLATFORMTHEME=cosmic
 for QT_PLUGIN_PATH in /usr/lib{*,/*}/qt6/plugins; do
     if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
-        export QT_QPA_PLATFORMTHEME=cosmic
+        # CuteCosmic found, no need for a fallback.
         break
     elif [ -f "${QT_PLUGIN_PATH}/platformthemes/libqt6ct.so" ]; then
         export QT_QPA_PLATFORMTHEME=qt6ct
