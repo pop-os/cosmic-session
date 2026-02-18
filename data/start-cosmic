@@ -43,10 +43,11 @@ export QT_QPA_PLATFORMTHEME=cosmic
 for QT_PLUGIN_PATH in /usr/lib{*,/*}/qt6/plugins; do
     if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
         # CuteCosmic found, no need for a fallback.
+        export QT_QPA_PLATFORMTHEME=cosmic
         break
     elif [ -f "${QT_PLUGIN_PATH}/platformthemes/libqt6ct.so" ]; then
+        # Fallback to qt6ct, but keep looking for CuteCosmic.
         export QT_QPA_PLATFORMTHEME=qt6ct
-        break
     fi
 done
 
