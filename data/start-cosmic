@@ -39,18 +39,27 @@ export QT_ENABLE_HIGHDPI_SCALING=1
 export DCONF_PROFILE=cosmic
 
 # Set the QT platform theme to CuteCosmic if installed, otherwise qt6ct
+QT_PLUGIN_PATHS=()
 if command -v qtpaths6 >/dev/null 2>&1; then
-    QT6_PLUGIN_DIR=$(qtpaths6 --plugin-dir)
+    QT_PLUGIN_PATHS+=($(qtpaths6 --plugin-dir))
+elif command -v qtpaths-qt6 >/dev/null 2>&1; then
+    QT_PLUGIN_PATHS+=($(qtpaths-qt6 --plugin-dir))
 elif command -v qtpaths >/dev/null 2>&1; then
-    QT6_PLUGIN_DIR=$(qtpaths --plugin-dir)
+    QT_PLUGIN_PATHS+=($(qtpaths --plugin-dir))
 else
-    QT6_PLUGIN_DIR="/usr/lib64/qt6/plugins"
+    shopt -s nullglob
+    QT_PLUGIN_PATHS+=(/usr/lib{*,/*}/qt6/plugins)
+    shopt -u nullglob
 fi
-if [ -f "${QT6_PLUGIN_DIR}/platformthemes/libcutecosmictheme.so" ]; then
-    export QT_QPA_PLATFORMTHEME=cosmic
-elif [ -f "${QT6_PLUGIN_DIR}/platformthemes/libqt6ct.so" ]; then
-    export QT_QPA_PLATFORMTHEME=qt6ct
-fi
+for QT_PLUGIN_PATH in "${QT_PLUGIN_PATHS[@]}"; do
+    if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
+        export QT_QPA_PLATFORMTHEME=cosmic
+        break
+    elif [ -f "${QT_PLUGIN_PATH}/platformthemes/libqt6ct.so" ]; then
+        export QT_QPA_PLATFORMTHEME=qt6ct
+        break
+    fi
+done
 
 # Start gnome keyring components if the daemon is active
 # -> check if /run/user/$UID/keyring exists
