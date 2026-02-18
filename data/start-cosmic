@@ -34,10 +34,23 @@ export _JAVA_AWT_WM_NONREPARENTING=1
 export GDK_BACKEND=wayland,x11
 export MOZ_ENABLE_WAYLAND=1
 export QT_QPA_PLATFORM="wayland;xcb"
-export QT_QPA_PLATFORMTHEME=qt6ct
 export QT_AUTO_SCREEN_SCALE_FACTOR=1
 export QT_ENABLE_HIGHDPI_SCALING=1
 export DCONF_PROFILE=cosmic
+
+# Set the QT platform theme to CuteCosmic if installed, otherwise qt6ct
+if command -v qtpaths6 >/dev/null 2>&1; then
+    QT6_PLUGIN_DIR=$(qtpaths6 --plugin-dir)
+elif command -v qtpaths >/dev/null 2>&1; then
+    QT6_PLUGIN_DIR=$(qtpaths --plugin-dir)
+else
+    QT6_PLUGIN_DIR="/usr/lib64/qt6/plugins"
+fi
+if [ -f "${QT6_PLUGIN_DIR}/platformthemes/libcutecosmictheme.so" ]; then
+    export QT_QPA_PLATFORMTHEME=cosmic
+elif [ -f "${QT6_PLUGIN_DIR}/platformthemes/libqt6ct.so" ]; then
+    export QT_QPA_PLATFORMTHEME=qt6ct
+fi
 
 # Start gnome keyring components if the daemon is active
 # -> check if /run/user/$UID/keyring exists
