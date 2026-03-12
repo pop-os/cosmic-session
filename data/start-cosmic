@@ -1,35 +1,49 @@
-#!/bin/bash
+#!/bin/sh
 
 set -e
 
 # From: https://people.debian.org/~mpitt/systemd.conf-2016-graphical-session.pdf
 
-if command -v systemctl >/dev/null; then
+if command -v systemctl >/dev/null 2>&1; then
     # robustness: if the previous graphical session left some failed units,
     # reset them so that they don't break this startup
-    for unit in $(systemctl --user --no-legend --state=failed --plain list-units | cut -f1 -d' '); do
-        partof="$(systemctl --user show -p PartOf --value "$unit")"
+    systemctl --user --no-legend --state=failed --plain list-units 2>/dev/null |
+    while IFS= read -r line; do
+        # first whitespace-separated field is the unit name
+        unit=${line%% *}
+        [ -n "$unit" ] || continue
+
+        partof="$(systemctl --user show -p PartOf --value "$unit" 2>/dev/null || true)"
         for target in cosmic-session.target graphical-session.target; do
             if [ "$partof" = "$target" ]; then
-                systemctl --user reset-failed "$unit"
+                systemctl --user reset-failed "$unit" 2>/dev/null || true
                 break
             fi
         done
     done
 fi
 
-# use the user's preferred shell to acquire environment variables
+# Use the user's preferred shell to acquire environment variables
 # see: https://github.com/pop-os/cosmic-session/issues/23
-if [ -n "${SHELL}" ]; then
+if [ -n "${SHELL-}" ]; then
     # --in-login-shell: our flag to indicate that we don't need to recurse any further
-    if [ "${1}" != "--in-login-shell" ]; then
-        # `exec -l`: like `login`, prefixes $SHELL with a hyphen to start a login shell
-        exec bash -c "exec -l '${SHELL}' -c '${0} --in-login-shell'"
+    if [ "${1-}" != "--in-login-shell" ]; then
+        # Best-effort "login shell" behavior (not strictly POSIX across all shells).
+        # Try "-l" if the shell likely supports it, else fall back to plain "-c".
+        case "$SHELL" in
+            */bash|*/zsh|*/ksh|*/mksh)
+                exec "$SHELL" -l -c "exec '$0' --in-login-shell"
+                ;;
+            *)
+                exec "$SHELL" -c "exec '$0' --in-login-shell"
+                ;;
+        esac
     fi
 fi
 
-export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:=COSMIC}"
-export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:=wayland}"
+: "${XDG_CURRENT_DESKTOP:=COSMIC}"
+: "${XDG_SESSION_TYPE:=wayland}"
+export XDG_CURRENT_DESKTOP XDG_SESSION_TYPE
 export _JAVA_AWT_WM_NONREPARENTING=1
 export GDK_BACKEND=wayland,x11
 export MOZ_ENABLE_WAYLAND=1
@@ -40,70 +54,70 @@ export DCONF_PROFILE=cosmic
 
 # Set the QT platform theme to CuteCosmic. Fallback to qt6ct if CuteCosmic is not installed.
 export QT_QPA_PLATFORMTHEME=cosmic
-for QT_PLUGIN_PATH in /usr/lib{*,/*}/qt6/plugins; do
+for QT_PLUGIN_PATH in /usr/lib*/qt6/plugins /usr/lib*/*/qt6/plugins; do
+    [ -d "$QT_PLUGIN_PATH" ] || continue
+
     if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
         # CuteCosmic found, no need for a fallback.
-        export QT_QPA_PLATFORMTHEME=cosmic
+        QT_QPA_PLATFORMTHEME=cosmic
+        export QT_QPA_PLATFORMTHEME
         break
     elif [ -f "${QT_PLUGIN_PATH}/platformthemes/libqt6ct.so" ]; then
         # Fallback to qt6ct, but keep looking for CuteCosmic.
-        export QT_QPA_PLATFORMTHEME=qt6ct
+        QT_QPA_PLATFORMTHEME=qt6ct
+        export QT_QPA_PLATFORMTHEME
     fi
 done
 
 # Start gnome keyring components if the daemon is active
 # -> check if /run/user/$UID/keyring exists
-if [ -d "/run/user/$(id -u)/keyring" ]; then
-
+uid="$(id -u)"
+if [ -d "/run/user/$uid/keyring" ]; then
     # Use PATH lookup instead of hardcoding /usr/bin
     if command -v gnome-keyring-daemon >/dev/null 2>&1; then
-        eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh > /dev/null 2>&1)"
+        # shellcheck disable=SC2046
+        eval "$(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh 2>/dev/null)"
     else
         echo "gnome-keyring-daemon not found in PATH" >&2
     fi
 
-    # Only set SSH_AUTH_SOCK if the socket actually exists. Either
-    # set the correct one, or don't set one at all. Don't set the
-    # wrong value.
-    if [ -S "/run/user/$(id -u)/gcr/ssh" ]; then
-        export SSH_AUTH_SOCK="/run/user/$(id -u)/gcr/ssh"
-    elif [ -S "/run/user/$(id -u)/keyring/ssh" ]; then
-        export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
+    # Only set SSH_AUTH_SOCK if the socket actually exists.
+    if [ -S "/run/user/$uid/gcr/ssh" ]; then
+        export SSH_AUTH_SOCK="/run/user/$uid/gcr/ssh"
+    elif [ -S "/run/user/$uid/keyring/ssh" ]; then
+        export SSH_AUTH_SOCK="/run/user/$uid/keyring/ssh"
     fi
 fi
 
-if command -v systemctl >/dev/null; then
+if command -v systemctl >/dev/null 2>&1; then
     # Import some variables that we explicitly want to have available
     # in the user session.
-    systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE SSH_AUTH_SOCK
+    systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE SSH_AUTH_SOCK 2>/dev/null || true
 
-    # For environment variables already imported into the user's
-    # session, if the value imported differs from the value in this
-    # environment, update it.
-    mapfile -t existing_env_vars < <(systemctl --user show-environment)
-    for env_var in "${existing_env_vars[@]}"; do
-        env_var_name="${env_var%%=*}"
-        env_var_value=${!env_var_name:-}
+    # For environment variables already imported into the user's session,
+    # if the value imported differs from the value in this environment, update it.
+    systemctl --user show-environment 2>/dev/null |
+    while IFS= read -r env_var; do
+        [ -n "$env_var" ] || continue
 
-        # Skip current iteration if the environment variable's value
-        # in the current envionment is unset.
-        if [[ -z "${env_var_value}" ]]; then
-            continue
+        env_var_name=${env_var%%=*}
+
+        # Get current value from this process environment (POSIX-safe via eval)
+        eval "current_val=\${$env_var_name-}"
+
+        env_var_val_str_to_compare="${env_var_name}=${current_val-}"
+
+        if [ "$env_var" != "$env_var_val_str_to_compare" ]; then
+            # Update only if the value in current environment is non-empty
+            if [ -n "${current_val-}" ]; then
+                systemctl --user import-environment "$env_var_name" 2>/dev/null || true
+            fi
         fi
-
-        env_var_val_str_to_compare="${env_var_name}=${env_var_value}"
-        env_var_val_str_to_compare_ansi_c_quoted="${env_var_name}=\$'$(printf '%q' "${env_var_value}")'"
-        if [[ "${env_var}" == "${env_var_val_str_to_compare}" ]]; then
-            continue
-        elif [[ "${env_var}" == "${env_var_val_str_to_compare_ansi_c_quoted}" ]]; then
-            continue
-        fi
-        systemctl --user import-environment "${env_var_name}" ||:
     done
 fi
 
 # Run cosmic-session
-if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
+if [ -z "${DBUS_SESSION_BUS_ADDRESS-}" ]; then
     exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
 else
     exec /usr/bin/cosmic-session
