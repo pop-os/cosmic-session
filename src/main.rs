@@ -145,11 +145,22 @@ async fn start(
 	)
 	.wrap_err("failed to start compositor")?;
 
-	let mut env_vars = env_rx
-		.await
-		.expect("failed to receive environmental variables")
-		.into_iter()
-		.collect::<Vec<_>>();
+	let mut env_vars =
+		match tokio::time::timeout(Duration::from_secs(30), env_rx).await {
+			Ok(Ok(vars)) => vars.into_iter().collect::<Vec<_>>(),
+			Ok(Err(_)) => {
+				error!("compositor exited before sending environment variables");
+				compositor_handle.abort();
+				return Ok(Status::Restarted);
+			}
+			Err(_) => {
+				error!(
+					"timed out waiting for environment variables from compositor (30s)"
+				);
+				compositor_handle.abort();
+				return Ok(Status::Restarted);
+			}
+		};
 	info!(
 		"got environmental variables from cosmic-comp: {:?}",
 		env_vars

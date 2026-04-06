@@ -105,7 +105,10 @@ pub fn run_compositor(
 	// Create a pair of unix sockets - one for us (session),
 	// one for the compositor (comp)
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
-	let (mut session_rx, _session_tx) = session.into_split();
+	let (mut session_rx, session_tx) = session.into_split();
+	// Drop the write half immediately — session never writes to the compositor
+	// via this socket, and holding it open would prevent EOF on the comp side.
+	drop(session_tx);
 	// Convert our compositor socket to a non-blocking file descriptor.
 	let comp = {
 		let std_stream = comp
@@ -145,6 +148,13 @@ pub fn run_compositor(
 			)
 			.await
 			.expect("failed to launch compositor");
+
+		// Drop the compositor-side fd now that the child process has inherited it.
+		// Without this, the parent keeps the comp socket endpoint alive, preventing
+		// EOF on session_rx when the child exits — causing the IPC loop to hang
+		// forever and blocking session restart.
+		drop(comp);
+
 		// Create a new state object for IPC purposes.
 		let mut ipc_state = IpcState {
 			env_tx: Some(env_tx),
