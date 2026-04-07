@@ -47,6 +47,9 @@ install:
     # mimeapps
     install -Dm0644 data/cosmic-mimeapps.list {{ applicationdir }}/cosmic-mimeapps.list
 
+    # dbus-broker hardening: raise soft fd limit and enable restart on failure
+    install -Dm0644 data/dbus-broker.service.d/10-cosmic-nofile.conf {{ systemddir }}/dbus-broker.service.d/10-cosmic-nofile.conf
+
     # dconf profile
     install -Dm644 data/dconf/profile/cosmic {{ rootdir }}/{{ cosmic_dconf_profile }}
 
