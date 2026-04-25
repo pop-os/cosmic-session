@@ -164,7 +164,7 @@ async fn start(
 			Ok(env) => {
 				for systemd_env in env {
 					// Only update the envvar if unset
-					if std::env::var_os(&systemd_env.key) == None {
+					if std::env::var_os(&systemd_env.key).is_none() {
 						// Blacklist of envvars that we shouldn't touch (taken from KDE)
 						if (!systemd_env.key.starts_with("XDG_")
 							|| systemd_env.key == "XDG_DATA_DIRS"
@@ -243,11 +243,10 @@ async fn start(
 					.instrument(stderr_span)
 				})
 				.with_on_exit(move |_, _, _, will_restart| {
-					if !will_restart {
-						if let Some(tx) = settings_exit_tx.lock().unwrap().take() {
+					if !will_restart
+						&& let Some(tx) = settings_exit_tx.lock().unwrap().take() {
 							_ = tx.send(());
 						}
-					}
 					async {}
 				}),
 		)
@@ -533,17 +532,15 @@ async fn start_component(
 				})
 				.with_on_start(move |pman, pkey, _will_restart| async move {
 					#[cfg(feature = "systemd")]
-					if *is_systemd_used() {
-						if let Ok((innr_cmd, Some(pid))) = pman.get_exe_and_pid(pkey).await {
-							if let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await {
+					if *is_systemd_used()
+						&& let Ok((innr_cmd, Some(pid))) = pman.get_exe_and_pid(pkey).await
+							&& let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await {
 								warn!(
 									"Failed to spawn scope for {}. Creating transient unit failed \
 									 with {}",
 									innr_cmd, err
 								);
 							};
-						}
-					}
 				})
 				.with_on_exit(move |mut _pman, _key, err_code, _will_restart| {
 					if let Some(err) = err_code {

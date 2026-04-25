@@ -26,6 +26,7 @@ pub fn create_socket() -> Result<(OwnedFd, OwnedFd)> {
 	Ok((OwnedFd::from(sock_1), OwnedFd::from(sock_2)))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn notifications_process(
 	span: tracing::Span,
 	cmd: &'static str,
