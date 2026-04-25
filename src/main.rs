@@ -9,10 +9,8 @@ mod process;
 mod service;
 mod systemd;
 
-use async_signals::Signals;
 use color_eyre::{Result, eyre::WrapErr};
 use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
-use futures_util::StreamExt;
 #[cfg(feature = "autostart")]
 use itertools::Itertools;
 use launch_pad::{ProcessManager, process::Process};
@@ -27,6 +25,7 @@ use std::{borrow::Cow, env, os::fd::AsRawFd, sync::Arc};
 #[cfg(feature = "systemd")]
 use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
 use tokio::{
+	signal::unix::{SignalKind, signal},
 	sync::{
 		Mutex,
 		mpsc::{Receiver, Sender},
@@ -457,7 +456,8 @@ async fn start(
 		info!("started {} programs", dedupe.len());
 	}
 
-	let mut signals = Signals::new(vec![libc::SIGTERM, libc::SIGINT]).unwrap();
+	let mut sigterm = signal(SignalKind::terminate()).expect("Failed to bind SIGTERM handler");
+	let mut sigint = signal(SignalKind::interrupt()).expect("Failed to bind SIGINT handler");
 	let mut status = Status::Exited;
 	let session_dbus_rx_next = session_rx.recv();
 	tokio::select! {
@@ -475,12 +475,11 @@ async fn start(
 				}
 			}
 		},
-		signal = signals.next() => match signal {
-			Some(libc::SIGTERM | libc::SIGINT) => {
-				info!("EXITING: received request to terminate");
-			}
-			Some(signal) => unreachable!("EXITING: received unhandled signal {}", signal),
-			None => {},
+		_ = sigterm.recv() => {
+			info!("EXITING: received SIGTERM request to terminate");
+		},
+		_ = sigint.recv() => {
+			info!("EXITING: received SIGINT request to terminate");
 		}
 	}
 
