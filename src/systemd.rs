@@ -17,11 +17,11 @@ pub struct EnvVar {
 	pub value: String,
 }
 
-impl Into<EnvVar> for (&str, &str) {
-	fn into(self) -> EnvVar {
+impl From<(&str, &str)> for EnvVar {
+	fn from(val: (&str, &str)) -> Self {
 		EnvVar {
-			key: self.0.to_owned(),
-			value: self.1.to_owned(),
+			key: val.0.to_owned(),
+			value: val.1.to_owned(),
 		}
 	}
 }
