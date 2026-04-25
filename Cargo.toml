@@ -15,7 +15,6 @@ cosmic-dbus-a11y = { git = "https://github.com/pop-os/dbus-settings-bindings" }
 freedesktop-desktop-entry = { version = "0.8", optional = true }
 shell-words = { version = "1.1.1", optional = true }
 dirs = { version = "6.0.0", optional = true }
-itertools = "0.14"
 launch-pad = { git = "https://github.com/pop-os/launch-pad" }
 log-panics = { version = "2", features = ["with-backtrace"] }
 rustix = "1.1"
@@ -43,7 +42,6 @@ tracing = "0.1"
 tracing-journald = { version = "0.3", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zbus = { version = "5.14.0", default-features = false, features = ["tokio"] }
-cosmic-notifications-util = { git = "https://github.com/pop-os/cosmic-notifications" }
 logind-zbus = { version = "5.3.2", optional = true }
 
 [features]

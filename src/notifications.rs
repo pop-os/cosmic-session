@@ -1,5 +1,4 @@
 use color_eyre::{Result, eyre::Context};
-use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
 use launch_pad::{ProcessKey, process::Process};
 use rustix::fd::AsRawFd;
 use std::{
@@ -8,6 +7,9 @@ use std::{
 };
 use tokio::sync::Mutex;
 use tracing::Instrument;
+
+pub const PANEL_NOTIFICATIONS_FD: &str = "PANEL_NOTIFICATIONS_FD";
+pub const DAEMON_NOTIFICATIONS_FD: &str = "DAEMON_NOTIFICATIONS_FD";
 
 pub fn create_socket() -> Result<(OwnedFd, OwnedFd)> {
 	// Create a new pair of unnamed Unix sockets
