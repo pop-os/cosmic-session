@@ -10,9 +10,6 @@ mod service;
 mod systemd;
 
 use color_eyre::{Result, eyre::WrapErr};
-use cosmic_notifications_util::{DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD};
-#[cfg(feature = "autostart")]
-use itertools::Itertools;
 use launch_pad::{ProcessManager, process::Process};
 use service::SessionRequest;
 #[cfg(feature = "autostart")]
@@ -37,7 +34,9 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, metadata::LevelFilter};
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 
-use crate::notifications::notifications_process;
+use crate::notifications::{
+	DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD, notifications_process,
+};
 #[cfg(feature = "autostart")]
 const AUTOSTART_DIR: &'static str = "autostart";
 #[cfg(feature = "autostart")]
@@ -243,10 +242,9 @@ async fn start(
 					.instrument(stderr_span)
 				})
 				.with_on_exit(move |_, _, _, will_restart| {
-					if !will_restart
-						&& let Some(tx) = settings_exit_tx.lock().unwrap().take() {
-							_ = tx.send(());
-						}
+					if !will_restart && let Some(tx) = settings_exit_tx.lock().unwrap().take() {
+						_ = tx.send(());
+					}
 					async {}
 				}),
 		)
@@ -413,7 +411,9 @@ async fn start(
 
 				if let Some(program_name) = exec_words.next() {
 					// filter out any placeholder args, since we might not be able to deal with them
-					let filtered_args = exec_words.filter(|s| !s.starts_with("%")).collect_vec();
+					let filtered_args = exec_words
+						.filter(|s| !s.starts_with("%"))
+						.collect::<Vec<_>>();
 
 					// escape them
 					let escaped_args = shell_words::split(&*filtered_args.join(" "));
@@ -534,13 +534,13 @@ async fn start_component(
 					#[cfg(feature = "systemd")]
 					if *is_systemd_used()
 						&& let Ok((innr_cmd, Some(pid))) = pman.get_exe_and_pid(pkey).await
-							&& let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await {
-								warn!(
-									"Failed to spawn scope for {}. Creating transient unit failed \
-									 with {}",
-									innr_cmd, err
-								);
-							};
+						&& let Err(err) = spawn_scope(innr_cmd.clone(), vec![pid]).await
+					{
+						warn!(
+							"Failed to spawn scope for {}. Creating transient unit failed with {}",
+							innr_cmd, err
+						);
+					};
 				})
 				.with_on_exit(move |mut _pman, _key, err_code, _will_restart| {
 					if let Some(err) = err_code {
