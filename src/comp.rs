@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 use color_eyre::eyre::{Result, WrapErr};
-use launch_pad::{ProcessManager, process::Process};
+use launch_pad::ProcessManager;
+use launch_pad::process::Process;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, os::unix::prelude::*};
-use tokio::{
-	io::AsyncReadExt,
-	net::{UnixStream, unix::OwnedReadHalf},
-	sync::{mpsc, oneshot},
-	task::JoinHandle,
-};
+use std::collections::HashMap;
+use std::os::unix::prelude::*;
+use tokio::io::AsyncReadExt;
+use tokio::net::UnixStream;
+use tokio::net::unix::OwnedReadHalf;
+use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::{process::mark_as_not_cloexec, service::SessionRequest};
+use crate::process::mark_as_not_cloexec;
+use crate::service::SessionRequest;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "message")]

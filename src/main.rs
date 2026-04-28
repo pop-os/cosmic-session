@@ -9,30 +9,32 @@ mod process;
 mod service;
 mod systemd;
 
-use color_eyre::{Result, eyre::WrapErr};
-use launch_pad::{ProcessManager, process::Process};
+use color_eyre::Result;
+use color_eyre::eyre::WrapErr;
+use launch_pad::ProcessManager;
+use launch_pad::process::Process;
 use service::SessionRequest;
+use std::borrow::Cow;
 #[cfg(feature = "autostart")]
 use std::collections::HashSet;
+use std::env;
+use std::os::fd::AsRawFd;
 #[cfg(feature = "autostart")]
 use std::path::PathBuf;
 #[cfg(feature = "autostart")]
 use std::process::{Command, Stdio};
-use std::{borrow::Cow, env, os::fd::AsRawFd, sync::Arc};
+use std::sync::Arc;
 #[cfg(feature = "systemd")]
 use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
-use tokio::{
-	signal::unix::{SignalKind, signal},
-	sync::{
-		Mutex,
-		mpsc::{Receiver, Sender},
-		oneshot,
-	},
-	time::Duration,
-};
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::{Mutex, oneshot};
+use tokio::time::Duration;
 use tokio_util::sync::CancellationToken;
-use tracing::{Instrument, metadata::LevelFilter};
-use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use tracing::Instrument;
+use tracing::metadata::LevelFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{EnvFilter, fmt};
 
 use crate::notifications::{
 	DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD, notifications_process,
