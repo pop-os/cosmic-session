@@ -1,10 +1,11 @@
-use color_eyre::{Result, eyre::Context};
-use launch_pad::{ProcessKey, process::Process};
+use color_eyre::Result;
+use color_eyre::eyre::Context;
+use launch_pad::ProcessKey;
+use launch_pad::process::Process;
 use rustix::fd::AsRawFd;
-use std::{
-	os::{fd::OwnedFd, unix::net::UnixStream},
-	sync::Arc,
-};
+use std::os::fd::OwnedFd;
+use std::os::unix::net::UnixStream;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::Instrument;
 

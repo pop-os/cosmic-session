@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
-use std::{
-	path::Path,
-	process::{Command, Stdio},
-	sync::OnceLock,
-};
+use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
 
-use zbus::{
-	Connection,
-	zvariant::{Array, OwnedValue},
-};
+use zbus::Connection;
+use zbus::zvariant::{Array, OwnedValue};
 
 #[derive(Debug)]
 pub struct EnvVar {
