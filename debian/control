@@ -12,6 +12,7 @@ Homepage: https://github.com/pop-os/cosmic-session
 
 Package: cosmic-session
 Architecture: amd64 arm64
+Conflicts: seatd
 Depends:
   ${misc:Depends},
   ${shlibs:Depends},
