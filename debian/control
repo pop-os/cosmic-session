@@ -42,6 +42,7 @@ Depends:
   xwayland,
 Recommends:
   cosmic-edit,
+  cosmic-monitor,
   cosmic-player,
   cosmic-store,
   cosmic-term,
