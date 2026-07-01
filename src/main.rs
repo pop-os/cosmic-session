@@ -229,6 +229,7 @@ async fn start(
 		.start(
 			Process::new()
 				.with_executable("cosmic-settings-daemon")
+				.with_env(env_vars.iter().cloned())
 				.with_on_stdout(move |_, _, line| {
 					let stdout_span = stdout_span.clone();
 					async move {
