@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 set -e
 
@@ -23,8 +23,8 @@ fi
 if [ -n "${SHELL}" ]; then
     # --in-login-shell: our flag to indicate that we don't need to recurse any further
     if [ "${1}" != "--in-login-shell" ]; then
-        # `exec -l`: like `login`, prefixes $SHELL with a hyphen to start a login shell
-        exec bash -c "exec -l '${SHELL}' -c '${0} --in-login-shell'"
+        # `-l`: start $SHELL as a login shell so it sources the user's profile.
+        exec "${SHELL}" -l -c "'${0}' --in-login-shell"
     fi
 fi
 
@@ -42,7 +42,7 @@ export DCONF_PROFILE=cosmic
 # Set the QT platform theme to CuteCosmic. Fallback to qt6ct if CuteCosmic is not installed.
 if [ -z "$QT_QPA_PLATFORMTHEME" ]; then
     export QT_QPA_PLATFORMTHEME=cosmic
-    for QT_PLUGIN_PATH in /usr/lib{*,/*}/qt6/plugins; do
+    for QT_PLUGIN_PATH in /usr/lib*/qt6/plugins /usr/lib/*/qt6/plugins; do
         if [ -f "${QT_PLUGIN_PATH}/platformthemes/libcutecosmictheme.so" ]; then
             # CuteCosmic found, no need for a fallback.
             export QT_QPA_PLATFORMTHEME=cosmic
@@ -84,30 +84,26 @@ if command -v systemctl >/dev/null; then
     # For environment variables already imported into the user's
     # session, if the value imported differs from the value in this
     # environment, update it.
-    mapfile -t existing_env_vars < <(systemctl --user show-environment)
-    for env_var in "${existing_env_vars[@]}"; do
+    systemctl --user show-environment | while IFS= read -r env_var; do
         env_var_name="${env_var%%=*}"
-        env_var_value=${!env_var_name:-}
+        env_var_value="$(printenv "${env_var_name}" || true)"
 
         # Skip current iteration if the environment variable's value
         # in the current envionment is unset.
-        if [[ -z "${env_var_value}" ]]; then
+        if [ -z "${env_var_value}" ]; then
             continue
         fi
 
-        env_var_val_str_to_compare="${env_var_name}=${env_var_value}"
-        env_var_val_str_to_compare_ansi_c_quoted="${env_var_name}=\$'$(printf '%q' "${env_var_value}")'"
-        if [[ "${env_var}" == "${env_var_val_str_to_compare}" ]]; then
-            continue
-        elif [[ "${env_var}" == "${env_var_val_str_to_compare_ansi_c_quoted}" ]]; then
+        # Skip updating variables where systemd already holds this exact value.
+        if [ "${env_var}" = "${env_var_name}=${env_var_value}" ]; then
             continue
         fi
-        systemctl --user import-environment "${env_var_name}" ||:
+        systemctl --user import-environment "${env_var_name}" || true
     done
 fi
 
 # Run cosmic-session
-if [[ -z "${DBUS_SESSION_BUS_ADDRESS}" ]]; then
+if [ -z "${DBUS_SESSION_BUS_ADDRESS}" ]; then
     exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
 else
     exec /usr/bin/cosmic-session
