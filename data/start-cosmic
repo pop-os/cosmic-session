@@ -56,8 +56,8 @@ if [ -z "$QT_QPA_PLATFORMTHEME" ]; then
 fi
 
 # Start gnome keyring components if the daemon is active
-# -> check if /run/user/$UID/keyring exists
-if [ -d "/run/user/$(id -u)/keyring" ]; then
+# -> check if $XDG_RUNTIME_DIR/keyring exists
+if [ -d "$XDG_RUNTIME_DIR/keyring" ]; then
 
     # Use PATH lookup instead of hardcoding /usr/bin
     if command -v gnome-keyring-daemon >/dev/null 2>&1; then
@@ -69,10 +69,10 @@ if [ -d "/run/user/$(id -u)/keyring" ]; then
     # Only set SSH_AUTH_SOCK if the socket actually exists. Either
     # set the correct one, or don't set one at all. Don't set the
     # wrong value.
-    if [ -S "/run/user/$(id -u)/gcr/ssh" ]; then
-        export SSH_AUTH_SOCK="/run/user/$(id -u)/gcr/ssh"
-    elif [ -S "/run/user/$(id -u)/keyring/ssh" ]; then
-        export SSH_AUTH_SOCK="/run/user/$(id -u)/keyring/ssh"
+    if [ -S "$XDG_RUNTIME_DIR/gcr/ssh" ]; then
+        export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/gcr/ssh"
+    elif [ -S "$XDG_RUNTIME_DIR/keyring/ssh" ]; then
+        export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/keyring/ssh"
     fi
 fi
 
