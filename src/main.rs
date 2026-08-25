@@ -46,6 +46,13 @@ const ENVIRONMENT_NAME: &'static str = "COSMIC";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
+	if let Some(arg) = env::args().nth(1)
+		&& (arg == "--version" || arg == "-V")
+	{
+		println!("cosmic-session {}", env!("CARGO_PKG_VERSION"));
+		return Ok(());
+	}
+
 	color_eyre::install().wrap_err("failed to install color_eyre error handler")?;
 
 	let trace = tracing_subscriber::registry();
