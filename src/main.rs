@@ -166,6 +166,13 @@ async fn start(
 	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
 
+	// expose the session version
+	env_vars.push((
+		"COSMIC_VERSION".to_string(),
+		env!("CARGO_PKG_VERSION").to_string(),
+	));
+	systemd::set_systemd_environment("COSMIC_VERSION", env!("CARGO_PKG_VERSION")).await;
+
 	#[cfg(feature = "systemd")]
 	let _inhibit_fd = if *is_systemd_used() {
 		match get_systemd_env().await {
