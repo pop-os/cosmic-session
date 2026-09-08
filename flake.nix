@@ -7,7 +7,6 @@
     nix-filter.url = "github:numtide/nix-filter";
     crane = {
       url = "github:ipetkov/crane";
-      inputs.nixpkgs.follows = "nixpkgs";
     };
     fenix = {
       url = "github:nix-community/fenix";
@@ -19,7 +18,7 @@
     flake-utils.lib.eachSystem [ "x86_64-linux" "aarch64-linux" ] (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        craneLib = crane.lib.${system}.overrideToolchain fenix.packages.${system}.stable.toolchain;
+        craneLib = (crane.mkLib pkgs).overrideToolchain fenix.packages.${system}.stable.toolchain;
 
         pkgDef = {
           nativeBuildInputs = with pkgs; [ just pkg-config autoPatchelfHook ];
@@ -47,7 +46,7 @@
           inherit cosmic-session;
         };
 
-        packages.default = cosmic-session.overrideAttrs (oldAttrs: rec {
+        packages.default = cosmic-session.overrideAttrs (oldAttrs:  {
         buildPhase = ''
             just prefix=$out xdp_cosmic=/run/current-system/sw/bin/xdg-desktop-portal-cosmic build 
           '';
