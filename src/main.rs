@@ -40,9 +40,9 @@ use crate::notifications::{
 	DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD, notifications_process,
 };
 #[cfg(feature = "autostart")]
-const AUTOSTART_DIR: &'static str = "autostart";
+const AUTOSTART_DIR: &str = "autostart";
 #[cfg(feature = "autostart")]
-const ENVIRONMENT_NAME: &'static str = "COSMIC";
+const ENVIRONMENT_NAME: &str = "COSMIC";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -390,18 +390,16 @@ async fn start(
 			}
 
 			// skip if we have an OnlyShowIn entry that doesn't include COSMIC
-			if let Some(only_show_in) = entry.only_show_in() {
-				if !only_show_in.contains(&ENVIRONMENT_NAME) {
+			if let Some(only_show_in) = entry.only_show_in()
+				&& !only_show_in.contains(&ENVIRONMENT_NAME) {
 					continue;
 				}
-			}
 
 			// ... OR we have a NotShowIn entry that includes COSMIC
-			if let Some(not_show_in) = entry.not_show_in() {
-				if not_show_in.contains(&ENVIRONMENT_NAME) {
+			if let Some(not_show_in) = entry.not_show_in()
+				&& not_show_in.contains(&ENVIRONMENT_NAME) {
 					continue;
 				}
-			}
 
 			info!(
 				"trying to start appid {} ({})",
@@ -419,7 +417,7 @@ async fn start(
 						.collect::<Vec<_>>();
 
 					// escape them
-					let escaped_args = shell_words::split(&*filtered_args.join(" "));
+					let escaped_args = shell_words::split(&filtered_args.join(" "));
 					if let Ok(args) = escaped_args {
 						info!("trying to start {} {}", program_name, args.join(" "));
 
