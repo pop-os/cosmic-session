@@ -24,8 +24,9 @@ use std::path::PathBuf;
 #[cfg(feature = "autostart")]
 use std::process::{Command, Stdio};
 use std::sync::Arc;
+use systemd::get_systemd_env;
 #[cfg(feature = "systemd")]
-use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
+use systemd::{is_systemd_used, spawn_scope};
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{Mutex, oneshot};
@@ -142,10 +143,12 @@ async fn start(
 		.await;
 	let token = CancellationToken::new();
 	let (env_tx, env_rx) = oneshot::channel();
+	let systemd_env = get_systemd_env().await;
 	let compositor_handle = comp::run_compositor(
 		&process_manager,
 		executable.clone(),
 		args,
+		systemd_env.clone(),
 		token.child_token(),
 		env_tx,
 		session_tx,
@@ -162,8 +165,12 @@ async fn start(
 		env_vars
 	);
 
-	// now that cosmic-comp is ready, set XDG_SESSION_TYPE=wayland for new processes
-	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
+	// now that cosmic-comp is ready, extend the env vars with the systemd_env and set XDG_SESSION_TYPE=wayland for new processes
+	env_vars.extend(
+		systemd_env
+			.into_iter()
+			.chain([("XDG_SESSION_TYPE".to_string(), "wayland".to_string())]),
+	);
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
 
 	// expose the session version
@@ -175,32 +182,6 @@ async fn start(
 
 	#[cfg(feature = "systemd")]
 	let _inhibit_fd = if *is_systemd_used() {
-		match get_systemd_env().await {
-			Ok(env) => {
-				for systemd_env in env {
-					// Only update the envvar if unset
-					if std::env::var_os(&systemd_env.key).is_none() {
-						// Blacklist of envvars that we shouldn't touch (taken from KDE)
-						if (!systemd_env.key.starts_with("XDG_")
-							|| systemd_env.key == "XDG_DATA_DIRS"
-							|| systemd_env.key == "XDG_CONFIG_DIRS")
-							&& systemd_env.key != "DISPLAY"
-							&& systemd_env.key != "XAUTHORITY"
-							&& systemd_env.key != "WAYLAND_DISPLAY"
-							&& systemd_env.key != "WAYLAND_SOCKET"
-							&& systemd_env.key != "_"
-							&& systemd_env.key != "SHELL"
-							&& systemd_env.key != "SHLVL"
-						{
-							env_vars.push((systemd_env.key, systemd_env.value));
-						}
-					}
-				}
-			}
-			Err(err) => {
-				warn!("Failed to sync systemd environment {}.", err);
-			}
-		};
 		#[cfg(feature = "logind")]
 		match zbus::Connection::system().await {
 			Ok(connection) => match logind_zbus::manager::ManagerProxy::new(&connection).await {
