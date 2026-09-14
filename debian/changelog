@@ -1,3 +1,9 @@
+cosmic-session (1.9.0) noble; urgency=medium
+
+  * Epoch 1.9.0 version update
+
+ -- Michael Murphy <michael@mmurphy.dev>  Mon, 14 Sep 2026 17:54:45 +0200
+
 cosmic-session (1.0.0) noble; urgency=medium
 
   * Initial release
