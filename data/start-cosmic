@@ -24,7 +24,7 @@ if [ -n "${SHELL}" ]; then
     # --in-login-shell: our flag to indicate that we don't need to recurse any further
     if [ "${1}" != "--in-login-shell" ]; then
         # `-l`: start $SHELL as a login shell so it sources the user's profile.
-        exec "${SHELL}" -l -c "'${0}' --in-login-shell"
+        exec "${SHELL}" -l -c "${0} --in-login-shell"
     fi
 fi
 
