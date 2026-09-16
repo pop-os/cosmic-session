@@ -27,6 +27,7 @@ Depends:
   cosmic-launcher,
   cosmic-notifications,
   cosmic-osd,
+  cosmic-osk,
   cosmic-panel,
   cosmic-randr,
   cosmic-screenshot,
