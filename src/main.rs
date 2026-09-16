@@ -352,6 +352,9 @@ async fn start(
 	let span = info_span!(parent: None, "cosmic-osd");
 	start_component("cosmic-osd", span, &process_manager, &env_vars).await;
 
+	let span = info_span!(parent: None, "cosmic-osk");
+	start_component("cosmic-osk", span, &process_manager, &env_vars).await;
+
 	let span = info_span!(parent: None, "cosmic-bg");
 	start_component("cosmic-bg", span, &process_manager, &env_vars).await;
 
