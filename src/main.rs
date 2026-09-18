@@ -7,6 +7,7 @@ mod comp;
 mod notifications;
 mod process;
 mod service;
+#[cfg(feature = "systemd")]
 mod systemd;
 
 use color_eyre::Result;
@@ -15,17 +16,13 @@ use launch_pad::ProcessManager;
 use launch_pad::process::Process;
 use service::SessionRequest;
 use std::borrow::Cow;
-#[cfg(feature = "autostart")]
-use std::collections::HashSet;
 use std::env;
 use std::os::fd::AsRawFd;
-#[cfg(feature = "autostart")]
-use std::path::PathBuf;
-#[cfg(feature = "autostart")]
-use std::process::{Command, Stdio};
 use std::sync::Arc;
+#[cfg(any(feature = "autostart", feature = "systemd"))]
+use std::{path::Path, sync::OnceLock};
 #[cfg(feature = "systemd")]
-use systemd::{get_systemd_env, is_systemd_used, spawn_scope};
+use systemd::{get_systemd_env, spawn_scope};
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::{Mutex, oneshot};
@@ -35,14 +32,20 @@ use tracing::Instrument;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{EnvFilter, fmt};
+#[cfg(feature = "autostart")]
+use {
+	std::collections::HashSet,
+	std::path::PathBuf,
+	std::process::{Command, Stdio},
+};
 
 use crate::notifications::{
 	DAEMON_NOTIFICATIONS_FD, PANEL_NOTIFICATIONS_FD, notifications_process,
 };
 #[cfg(feature = "autostart")]
-const AUTOSTART_DIR: &'static str = "autostart";
+const AUTOSTART_DIR: &str = "autostart";
 #[cfg(feature = "autostart")]
-const ENVIRONMENT_NAME: &'static str = "COSMIC";
+const ENVIRONMENT_NAME: &str = "COSMIC";
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -164,6 +167,7 @@ async fn start(
 
 	// now that cosmic-comp is ready, set XDG_SESSION_TYPE=wayland for new processes
 	env_vars.push(("XDG_SESSION_TYPE".to_string(), "wayland".to_string()));
+	#[cfg(feature = "systemd")]
 	systemd::set_systemd_environment("XDG_SESSION_TYPE", "wayland").await;
 
 	// expose the session version
@@ -171,10 +175,11 @@ async fn start(
 		"COSMIC_VERSION".to_string(),
 		env!("CARGO_PKG_VERSION").to_string(),
 	));
+	#[cfg(feature = "systemd")]
 	systemd::set_systemd_environment("COSMIC_VERSION", env!("CARGO_PKG_VERSION")).await;
 
 	#[cfg(feature = "systemd")]
-	let _inhibit_fd = if *is_systemd_used() {
+	if *is_systemd_used() {
 		match get_systemd_env().await {
 			Ok(env) => {
 				for systemd_env in env {
@@ -200,39 +205,35 @@ async fn start(
 			Err(err) => {
 				warn!("Failed to sync systemd environment {}.", err);
 			}
-		};
-		#[cfg(feature = "logind")]
-		match zbus::Connection::system().await {
-			Ok(connection) => match logind_zbus::manager::ManagerProxy::new(&connection).await {
-				Ok(proxy) => match proxy
-					.inhibit(
-						logind_zbus::manager::InhibitType::HandlePowerKey,
-						"Cosmic Session",
-						"Show confirmation dialog.",
-						"block",
-					)
-					.await
-				{
-					Ok(fd) => Some(fd),
-					Err(err) => {
-						error!("Failed to inhibit power key {err:?}");
-						None
-					}
-				},
+		}
+	}
+	#[cfg(feature = "logind")]
+	let _inhibit_fd = match zbus::Connection::system().await {
+		Ok(connection) => match logind_zbus::manager::ManagerProxy::new(&connection).await {
+			Ok(proxy) => match proxy
+				.inhibit(
+					logind_zbus::manager::InhibitType::HandlePowerKey,
+					"Cosmic Session",
+					"Show confirmation dialog.",
+					"block",
+				)
+				.await
+			{
+				Ok(fd) => Some(fd),
 				Err(err) => {
-					error!("Failed to connect to logind manager {err:?}");
+					error!("Failed to inhibit power key {err:?}");
 					None
 				}
 			},
 			Err(err) => {
-				error!("Failed to connect to system dbus {err:?}");
+				error!("Failed to connect to logind manager {err:?}");
 				None
 			}
+		},
+		Err(err) => {
+			error!("Failed to connect to system dbus {err:?}");
+			None
 		}
-		#[cfg(not(feature = "logind"))]
-		None
-	} else {
-		None
 	};
 
 	let stdout_span = info_span!(parent: None, "cosmic-settings-daemon");
@@ -273,8 +274,10 @@ async fn start(
 	// - cosmic-comp is ready
 	// - we've set any related variables
 	// - cosmic-settings-daemon is ready
+	#[cfg(feature = "systemd")]
 	systemd::start_systemd_target().await;
 	// Always stop the target when the process exits or panics.
+	#[cfg(feature = "systemd")]
 	scopeguard::defer! {
 		systemd::stop_systemd_target();
 	}
@@ -404,17 +407,17 @@ async fn start(
 			}
 
 			// skip if we have an OnlyShowIn entry that doesn't include COSMIC
-			if let Some(only_show_in) = entry.only_show_in() {
-				if !only_show_in.contains(&ENVIRONMENT_NAME) {
-					continue;
-				}
+			if let Some(only_show_in) = entry.only_show_in()
+				&& !only_show_in.contains(&ENVIRONMENT_NAME)
+			{
+				continue;
 			}
 
 			// ... OR we have a NotShowIn entry that includes COSMIC
-			if let Some(not_show_in) = entry.not_show_in() {
-				if not_show_in.contains(&ENVIRONMENT_NAME) {
-					continue;
-				}
+			if let Some(not_show_in) = entry.not_show_in()
+				&& not_show_in.contains(&ENVIRONMENT_NAME)
+			{
+				continue;
 			}
 
 			info!(
@@ -433,7 +436,7 @@ async fn start(
 						.collect::<Vec<_>>();
 
 					// escape them
-					let escaped_args = shell_words::split(&*filtered_args.join(" "));
+					let escaped_args = shell_words::split(&filtered_args.join(" "));
 					if let Ok(args) = escaped_args {
 						info!("trying to start {} {}", program_name, args.join(" "));
 
@@ -571,4 +574,12 @@ async fn start_component(
 		let _enter = stderr_span_clone.enter();
 		error!("failed to start {}: {}", cmd, err);
 	}
+}
+
+/// Determine if systemd is used as the init system. This should work on all
+/// linux distributions.
+#[cfg(any(feature = "autostart", feature = "systemd"))]
+fn is_systemd_used() -> &'static bool {
+	static IS_SYSTEMD_USED: OnceLock<bool> = OnceLock::new();
+	IS_SYSTEMD_USED.get_or_init(|| Path::new("/run/systemd/system").exists())
 }
