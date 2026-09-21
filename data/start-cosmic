@@ -66,13 +66,14 @@ if [ -d "$XDG_RUNTIME_DIR/keyring" ]; then
         echo "gnome-keyring-daemon not found in PATH" >&2
     fi
 
-    # Only set SSH_AUTH_SOCK if the socket actually exists. Either
-    # set the correct one, or don't set one at all. Don't set the
-    # wrong value.
-    if [ -S "$XDG_RUNTIME_DIR/gcr/ssh" ]; then
-        export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/gcr/ssh"
-    elif [ -S "$XDG_RUNTIME_DIR/keyring/ssh" ]; then
-        export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/keyring/ssh"
+    # Preserve an SSH agent configured by the user. Otherwise, use a
+    # Gnome Keyring SSH socket if one exists.
+    if [ -z "$SSH_AUTH_SOCK" ]; then
+        if [ -S "$XDG_RUNTIME_DIR/gcr/ssh" ]; then
+            export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/gcr/ssh"
+        elif [ -S "$XDG_RUNTIME_DIR/keyring/ssh" ]; then
+            export SSH_AUTH_SOCK="$XDG_RUNTIME_DIR/keyring/ssh"
+        fi
     fi
 fi
 
