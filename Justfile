@@ -1,13 +1,21 @@
+name := 'cosmic-session'
+
 rootdir := ''
 prefix := '/usr'
+
+base-dir := absolute_path(clean(rootdir / prefix))
+
 cargo-target-dir := env('CARGO_TARGET_DIR', 'target')
+bin-src := cargo-target-dir / 'release' / name
+bin-dst := base-dir / 'bin' / name
+
+bindir := base-dir / 'bin'
+systemddir := base-dir / 'lib' / 'systemd' / 'user'
+sessiondir := base-dir / 'share' / 'wayland-sessions'
+applicationdir := base-dir / 'share' / 'applications'
+
 orca := '/usr/bin/orca'
 cosmic_dconf_profile := prefix + '/share/dconf/profile/cosmic'
-usrdir := absolute_path(clean(rootdir / prefix))
-bindir := usrdir / 'bin'
-systemddir := usrdir / 'lib' / 'systemd' / 'user'
-sessiondir := usrdir / 'share' / 'wayland-sessions'
-applicationdir := usrdir / 'share' / 'applications'
 
 default: build-release
 
@@ -32,7 +40,7 @@ clean-dist: clean
 install:
     echo {{ cosmic_dconf_profile }}
     # main binary
-    install -Dm0755 {{ cargo-target-dir }}/release/cosmic-session {{ bindir }}/cosmic-session
+    install -Dm0755 {{ bin-src }} {{ bin-dst }}
 
     # session start script
     install -Dm0755 data/start-cosmic {{ bindir }}/start-cosmic
