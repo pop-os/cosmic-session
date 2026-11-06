@@ -12,7 +12,7 @@ pub async fn start_a11y(
 	let (tx, mut rx) = mpsc::unbounded_channel();
 	let mut process_key = None;
 	let conn = zbus::Connection::session().await?;
-	let proxy = cosmic_dbus_a11y::StatusProxy::new(&conn).await?;
+	let proxy = a11y_zbus::StatusProxy::new(&conn).await?;
 
 	tokio::spawn(async move {
 		let mut watch_changes = proxy.receive_screen_reader_enabled_changed().await;
