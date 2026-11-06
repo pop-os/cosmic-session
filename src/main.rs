@@ -90,12 +90,12 @@ async fn main() -> Result<()> {
 
 	let (session_tx, mut session_rx) = tokio::sync::mpsc::channel(10);
 	let session_tx_clone = session_tx.clone();
-	let _conn = zbus::connection::Builder::session()?
-		.name("com.system76.CosmicSession")?
+	let _conn = zbus::connection::Builder::session()
+		.name("com.system76.CosmicSession")
 		.serve_at(
 			"/com/system76/CosmicSession",
 			service::SessionService { session_tx },
-		)?
+		)
 		.build()
 		.await?;
 
@@ -175,7 +175,8 @@ async fn start(
 		env_vars
 	);
 
-	// now that cosmic-comp is ready, set XDG_SESSION_TYPE=wayland for new processes
+	// now that cosmic-comp is ready, set XDG_SESSION_TYPE=wayland for new
+	// processes
 	env_vars.extend(
 		systemd_env
 			.into_iter()
@@ -194,10 +195,10 @@ async fn start(
 
 	#[cfg(feature = "logind")]
 	let _inhibit_fd = match zbus::Connection::system().await {
-		Ok(connection) => match logind_zbus::manager::ManagerProxy::new(&connection).await {
+		Ok(connection) => match cosmic_login1_zbus::manager::ManagerProxy::new(&connection).await {
 			Ok(proxy) => match proxy
 				.inhibit(
-					logind_zbus::manager::InhibitType::HandlePowerKey,
+					cosmic_login1_zbus::manager::InhibitType::HandlePowerKey,
 					"Cosmic Session",
 					"Show confirmation dialog.",
 					"block",
@@ -360,8 +361,8 @@ async fn start(
 		info!("looking for autostart folders");
 		let mut directories_to_scan = Vec::new();
 
-		// we start by taking user specific directories, so that we can deduplicate and
-		// ensure user overrides are respected
+		// we start by taking user specific directories, so that we can
+		// deduplicate and ensure user overrides are respected
 
 		// user specific directories
 		if let Some(user_config_dir) = dirs::config_dir() {
@@ -418,7 +419,8 @@ async fn start(
 				let mut exec_words = exec_raw.split(" ");
 
 				if let Some(program_name) = exec_words.next() {
-					// filter out any placeholder args, since we might not be able to deal with them
+					// filter out any placeholder args, since we might not be
+					// able to deal with them
 					let filtered_args = exec_words
 						.filter(|s| !s.starts_with("%"))
 						.collect::<Vec<_>>();

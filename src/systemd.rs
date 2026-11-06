@@ -2,8 +2,7 @@
 
 use std::process::{Command, Stdio};
 
-use zbus::Connection;
-use zbus::zvariant::{Array, OwnedValue};
+use zbus::{Array, Connection, OwnedVariant};
 use zbus_systemd::systemd1::ManagerProxy as SystemdManagerProxy;
 
 pub async fn set_systemd_environment(key: &str, value: &str) {
@@ -69,8 +68,8 @@ pub async fn get_systemd_env() -> Vec<(String, String)> {
 pub async fn spawn_scope(mut command: String, pids: Vec<u32>) -> Result<(), zbus::Error> {
 	let connection = Connection::session().await?;
 	let systemd_manager = SystemdManagerProxy::new(&connection).await?;
-	let pids = OwnedValue::try_from(Array::from(pids)).unwrap();
-	let properties: Vec<(String, OwnedValue)> = vec![(String::from("PIDs"), pids)];
+	let pids = OwnedVariant::try_from(Array::from(pids)).unwrap();
+	let properties: Vec<(String, OwnedVariant)> = vec![(String::from("PIDs"), pids)];
 	if command.starts_with('/') {
 		// use the last component of the path as the unit name
 		command = command.rsplit('/').next().unwrap().to_string();
