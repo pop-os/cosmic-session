@@ -55,6 +55,33 @@ if [ -z "$QT_QPA_PLATFORMTHEME" ]; then
     done
 fi
 
+# The following is directly from startxfce4, comments and all.
+# Set the XDG_RUNTIME_DIR if we can not get it in systems
+# without systemd.
+if [ -z "${XDG_RUNTIME_DIR}" ]; then
+    if [ -d "/run/user" ]; then
+        XDG_RUNTIME_DIR="/run/user/$(id -ru)"
+        export XDG_RUNTIME_DIR
+    else
+        if [ -d "/var/run/user" ]; then
+            XDG_RUNTIME_DIR="/var/run/user/$(id -ru)"
+            export XDG_RUNTIME_DIR
+        else
+            XDG_RUNTIME_DIR="/tmp/${USER}-runtime"
+            export XDG_RUNTIME_DIR
+        fi
+    fi
+fi
+
+if [ ! -e "${XDG_RUNTIME_DIR}" ]; then
+    echo "XDG_RUNTIME_DIR is invalid or does not exist!"
+    echo "Creating XDG_RUNTIME_DIR..."
+    mkdir -p -m 0700 "${XDG_RUNTIME_DIR}" || {
+        echo "Unable to create runtime directory ${XDG_RUNTIME_DIR}!"
+        exit 1
+    }
+fi
+
 # Start gnome keyring components if the daemon is active
 # -> check if $XDG_RUNTIME_DIR/keyring exists
 if [ -d "$XDG_RUNTIME_DIR/keyring" ]; then
@@ -105,7 +132,11 @@ fi
 
 # Run cosmic-session
 if [ -z "${DBUS_SESSION_BUS_ADDRESS}" ]; then
-    exec /usr/bin/dbus-run-session -- /usr/bin/cosmic-session
+    if ! command -v dbus-run-session >/dev/null 2>&1; then
+        echo "dbus-run-session not found in PATH"
+        exit 1
+    fi
+    exec dbus-run-session -- cosmic-session
 else
-    exec /usr/bin/cosmic-session
+    exec cosmic-session
 fi
