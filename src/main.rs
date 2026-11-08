@@ -154,7 +154,7 @@ async fn start(
 	};
 	#[cfg(not(feature = "systemd"))]
 	let systemd_env = Vec::new();
-	let compositor_handle = comp::run_compositor(
+	let (compositor_handle, compositor_alive) = comp::run_compositor(
 		&process_manager,
 		executable.clone(),
 		args,
@@ -194,33 +194,9 @@ async fn start(
 	systemd::set_systemd_environment("COSMIC_VERSION", env!("CARGO_PKG_VERSION")).await;
 
 	#[cfg(feature = "logind")]
-	let _inhibit_fd = match zbus::Connection::system().await {
-		Ok(connection) => match cosmic_login1_zbus::manager::ManagerProxy::new(&connection).await {
-			Ok(proxy) => match proxy
-				.inhibit(
-					cosmic_login1_zbus::manager::InhibitType::HandlePowerKey,
-					"Cosmic Session",
-					"Show confirmation dialog.",
-					"block",
-				)
-				.await
-			{
-				Ok(fd) => Some(fd),
-				Err(err) => {
-					error!("Failed to inhibit power key {err:?}");
-					None
-				}
-			},
-			Err(err) => {
-				error!("Failed to connect to logind manager {err:?}");
-				None
-			}
-		},
-		Err(err) => {
-			error!("Failed to connect to system dbus {err:?}");
-			None
-		}
-	};
+	let power_key = hold_power_key(compositor_alive, inhibit_power_key().await);
+	#[cfg(not(feature = "logind"))]
+	let power_key = hold_power_key(compositor_alive);
 
 	let stdout_span = info_span!(parent: None, "cosmic-settings-daemon");
 	let stderr_span = stdout_span.clone();
@@ -490,6 +466,7 @@ async fn start(
 		_ = sigint.recv() => {
 			info!("EXITING: received SIGINT request to terminate");
 		}
+		_ = power_key => {}
 	}
 
 	compositor_handle.abort();
@@ -507,6 +484,60 @@ async fn start(
 
 	tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 	Ok(status)
+}
+
+#[cfg(feature = "logind")]
+async fn inhibit_power_key() -> Option<zbus::OwnedFd> {
+	match zbus::Connection::system().await {
+		Ok(connection) => match cosmic_login1_zbus::manager::ManagerProxy::new(&connection).await {
+			Ok(proxy) => match proxy
+				.inhibit(
+					cosmic_login1_zbus::manager::InhibitType::HandlePowerKey,
+					"Cosmic Session",
+					"Show confirmation dialog.",
+					"block",
+				)
+				.await
+			{
+				Ok(fd) => Some(fd),
+				Err(err) => {
+					error!("Failed to inhibit power key {err:?}");
+					None
+				}
+			},
+			Err(err) => {
+				error!("Failed to connect to logind manager {err:?}");
+				None
+			}
+		},
+		Err(err) => {
+			error!("Failed to connect to system dbus {err:?}");
+			None
+		}
+	}
+}
+
+#[cfg(feature = "logind")]
+async fn hold_power_key(mut compositor_alive: comp::Alive, mut power_key: Option<zbus::OwnedFd>) {
+	let mut released = false;
+	while compositor_alive.changed().await.is_ok() {
+		let frozen = *compositor_alive.borrow_and_update() == Some(false);
+		if frozen && power_key.is_some() {
+			warn!("cosmic-comp is frozen, logind handles the power key until it answers again");
+			power_key = None;
+			released = true;
+		} else if !frozen && released {
+			info!("cosmic-comp answers again");
+			power_key = inhibit_power_key().await;
+			released = false;
+		}
+	}
+	std::future::pending().await
+}
+
+#[cfg(not(feature = "logind"))]
+async fn hold_power_key(_compositor_alive: comp::Alive) {
+	std::future::pending().await
 }
 
 async fn start_component(

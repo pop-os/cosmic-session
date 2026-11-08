@@ -5,26 +5,34 @@ use launch_pad::process::Process;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::os::unix::prelude::*;
-use tokio::io::AsyncReadExt;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::UnixStream;
-use tokio::net::unix::OwnedReadHalf;
-use tokio::sync::{mpsc, oneshot};
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::process::mark_as_not_cloexec;
 use crate::service::SessionRequest;
 
+const HEARTBEAT: Duration = Duration::from_secs(2);
+const FROZEN: Duration = Duration::from_secs(10);
+
+pub type Alive = watch::Receiver<Option<bool>>;
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "message")]
 pub enum Message {
 	SetEnv { variables: HashMap<String, String> },
+	Heartbeat,
 }
 
 // Cancellation safe!
 #[derive(Default)]
 struct IpcState {
 	env_tx: Option<oneshot::Sender<HashMap<String, String>>>,
+	answered: watch::Sender<()>,
 	length: Option<u16>,
 	bytes_read: usize,
 	buf: Vec<u8>,
@@ -36,6 +44,10 @@ fn parse_and_handle_ipc(state: &mut IpcState) {
 			if let Some(env_tx) = state.env_tx.take() {
 				env_tx.send(variables).unwrap();
 			}
+			state.answered.send_replace(());
+		}
+		Ok(Message::Heartbeat) => {
+			state.answered.send_replace(());
 		}
 		Err(_) => {
 			warn!(
@@ -95,6 +107,45 @@ async fn receive_ipc(state: &mut IpcState, rx: &mut OwnedReadHalf) -> Result<()>
 	}
 }
 
+async fn send(tx: &mut OwnedWriteHalf, message: &Message) -> Result<()> {
+	let bytes = serde_json::to_vec(message).wrap_err("failed to encode IPC message")?;
+	let mut buf = (bytes.len() as u16).to_ne_bytes().to_vec();
+	buf.extend(bytes);
+	tx.write_all(&buf)
+		.await
+		.wrap_err("failed to write IPC message")
+}
+
+async fn heartbeat(
+	mut tx: OwnedWriteHalf,
+	mut answered: watch::Receiver<()>,
+	alive: watch::Sender<Option<bool>>,
+) {
+	if answered.changed().await.is_err() {
+		return;
+	}
+	loop {
+		tokio::time::sleep(HEARTBEAT).await;
+		if send(&mut tx, &Message::Heartbeat).await.is_err() {
+			return;
+		}
+		match tokio::time::timeout(FROZEN, answered.changed()).await {
+			Ok(Ok(())) => {}
+			Ok(Err(_)) => return,
+			Err(_) => {
+				if alive.borrow().is_none() {
+					return;
+				}
+				alive.send_replace(Some(false));
+				if answered.changed().await.is_err() {
+					return;
+				}
+			}
+		}
+		alive.send_if_modified(|alive| alive.replace(true) != Some(true));
+	}
+}
+
 pub fn run_compositor(
 	process_manager: &ProcessManager,
 	exec: String,
@@ -103,12 +154,13 @@ pub fn run_compositor(
 	_token: CancellationToken,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
 	session_dbus_tx: mpsc::Sender<SessionRequest>,
-) -> Result<JoinHandle<Result<()>>> {
+) -> Result<(JoinHandle<Result<()>>, Alive)> {
 	let process_manager = process_manager.clone();
+	let (alive_tx, alive_rx) = watch::channel(None);
 	// Create a pair of unix sockets - one for us (session),
 	// one for the compositor (comp)
 	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
-	let (mut session_rx, _session_tx) = session.into_split();
+	let (mut session_rx, session_tx) = session.into_split();
 	// Convert our compositor socket to a non-blocking file descriptor.
 	let comp = {
 		let std_stream = comp
@@ -121,7 +173,7 @@ pub fn run_compositor(
 	};
 	mark_as_not_cloexec(&comp).expect("Failed to mark fd as not cloexec");
 
-	Ok(tokio::spawn(async move {
+	let handle = tokio::spawn(async move {
 		// Create a new process handler for cosmic-comp, with our compositor socket's
 		// file descriptor as the `COSMIC_SESSION_SOCK` environment variable.
 		process_manager
@@ -152,9 +204,12 @@ pub fn run_compositor(
 			)
 			.await
 			.expect("failed to launch compositor");
+		let (answered_tx, answered_rx) = watch::channel(());
+		tokio::spawn(heartbeat(session_tx, answered_rx, alive_tx));
 		// Create a new state object for IPC purposes.
 		let mut ipc_state = IpcState {
 			env_tx: Some(env_tx),
+			answered: answered_tx,
 			..IpcState::default()
 		};
 		loop {
@@ -173,5 +228,6 @@ pub fn run_compositor(
 			}
 		}
 		Result::<()>::Ok(())
-	}))
+	});
+	Ok((handle, alive_rx))
 }
