@@ -80,7 +80,7 @@ fi
 if command -v systemctl >/dev/null; then
     # Import some variables that we explicitly want to have available
     # in the user session.
-    systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE SSH_AUTH_SOCK
+    systemctl --user import-environment XDG_SESSION_TYPE XDG_CURRENT_DESKTOP DCONF_PROFILE ${SSH_AUTH_SOCK:+SSH_AUTH_SOCK}
 
     # For environment variables already imported into the user's
     # session, if the value imported differs from the value in this
