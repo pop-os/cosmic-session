@@ -165,9 +165,20 @@ async fn start(
 	)
 	.wrap_err("failed to start compositor")?;
 
-	let mut env_vars = env_rx
-		.await
-		.expect("failed to receive environmental variables")
+	let env_vars = tokio::select! {
+		vars = env_rx => vars,
+		request = session_rx.recv() => {
+			compositor_handle.abort();
+			token.cancel();
+			tokio::time::sleep(Duration::from_secs(2)).await;
+			return Ok(match request {
+				Some(SessionRequest::Restart) => Status::Restarted,
+				_ => Status::Exited,
+			});
+		}
+	};
+	let mut env_vars = env_vars
+		.wrap_err("failed to receive environmental variables")?
 		.into_iter()
 		.collect::<Vec<_>>();
 	info!(
