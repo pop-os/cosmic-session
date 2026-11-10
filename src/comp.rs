@@ -1,98 +1,59 @@
 // SPDX-License-Identifier: GPL-3.0-only
+use crate::service::SessionRequest;
 use color_eyre::eyre::{Result, WrapErr};
+use futures_util::AsyncRead;
 use launch_pad::ProcessManager;
 use launch_pad::process::Process;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::os::unix::prelude::*;
-use tokio::io::AsyncReadExt;
+use std::pin::{Pin, pin};
 use tokio::net::UnixStream;
 use tokio::net::unix::OwnedReadHalf;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
+use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 use tokio_util::sync::CancellationToken;
 
-use crate::process::mark_as_not_cloexec;
-use crate::service::SessionRequest;
+struct IpcWrapper(Compat<OwnedReadHalf>);
 
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case", tag = "message")]
-pub enum Message {
-	SetEnv { variables: HashMap<String, String> },
+impl cosmic_comp_ipc::Readable for IpcWrapper {
+	fn readable(&self) -> impl Future<Output = std::io::Result<()>> {
+		self.0.get_ref().readable()
+	}
 }
 
-// Cancellation safe!
-#[derive(Default)]
-struct IpcState {
-	env_tx: Option<oneshot::Sender<HashMap<String, String>>>,
-	length: Option<u16>,
-	bytes_read: usize,
-	buf: Vec<u8>,
+impl AsyncRead for IpcWrapper {
+	fn poll_read(
+		mut self: Pin<&mut Self>,
+		cx: &mut std::task::Context<'_>,
+		buf: &mut [u8],
+	) -> std::task::Poll<std::io::Result<usize>> {
+		AsyncRead::poll_read(pin!(&mut self.0), cx, buf)
+	}
+
+	fn poll_read_vectored(
+		mut self: Pin<&mut Self>,
+		cx: &mut std::task::Context<'_>,
+		bufs: &mut [std::io::IoSliceMut<'_>],
+	) -> std::task::Poll<std::io::Result<usize>> {
+		AsyncRead::poll_read_vectored(pin!(&mut self.0), cx, bufs)
+	}
 }
 
-fn parse_and_handle_ipc(state: &mut IpcState) {
-	match serde_json::from_slice::<Message>(&state.buf) {
-		Ok(Message::SetEnv { variables }) => {
-			if let Some(env_tx) = state.env_tx.take() {
+async fn receive_ipc(
+	env_tx: &mut Option<oneshot::Sender<HashMap<String, String>>>,
+	rx: Pin<&mut IpcWrapper>,
+) -> Result<()> {
+	let msg = cosmic_comp_ipc::read_msg(rx)
+		.await
+		.wrap_err("Failed to read cosmic-comp ipc message")?;
+	match msg {
+		cosmic_comp_ipc::Message::SetEnv { variables } => {
+			if let Some(env_tx) = env_tx.take() {
 				env_tx.send(variables).unwrap();
 			}
 		}
-		Err(_) => {
-			warn!(
-				"Unknown session socket message, are you using incompatible cosmic-session and \
-				 cosmic-comp versions?"
-			)
-		}
 	}
-}
-
-async fn receive_ipc(state: &mut IpcState, rx: &mut OwnedReadHalf) -> Result<()> {
-	// This is kind of a doozy, but this is kinda complex so it can be
-	// cancellation-safe.
-	match state.length {
-		// We already got the length, and are currently reading the message body.
-		Some(length) => {
-			let index = state.bytes_read.saturating_sub(1);
-			// Add the amount of bytes read to our state.
-			// I don't think this is entirely cancellation safe, which worries me.
-			state.bytes_read += rx
-				.read_exact(&mut state.buf[index..])
-				.await
-				.wrap_err("failed to read IPC length")?;
-			// If we've read enough bytes, parse the message.
-			if state.bytes_read >= length as usize {
-				parse_and_handle_ipc(state);
-				// Set the state back to the default "waiting for a length" mode.
-				state.length = None;
-				state.bytes_read = 0;
-				state.buf.clear();
-			}
-			Ok(())
-		}
-		None => {
-			// Resize the state buffer enough to fit a u16./
-			state.buf.resize(2, 0);
-			let index = state.bytes_read.saturating_sub(1);
-			// Read the remaining bytes of the length.
-			state.bytes_read += rx
-				.read_exact(&mut state.buf[index..])
-				.await
-				.wrap_err("failed to read IPC length")?;
-			// If we've read two bytes, then parse a native-endian u16 from them.
-			if state.bytes_read >= 2 {
-				let length = u16::from_ne_bytes(
-					state.buf[..2]
-						.try_into()
-						.wrap_err("failed to convert IPC length to u16")?,
-				);
-				// Set the state to "reading the message body" mode, as we now have the length.
-				state.length = Some(length);
-				state.bytes_read = 0;
-				state.buf.resize(length as usize, 0);
-			}
-			Ok(())
-		}
-	}
+	Ok(())
 }
 
 pub fn run_compositor(
@@ -105,34 +66,26 @@ pub fn run_compositor(
 	session_dbus_tx: mpsc::Sender<SessionRequest>,
 ) -> Result<JoinHandle<Result<()>>> {
 	let process_manager = process_manager.clone();
-	// Create a pair of unix sockets - one for us (session),
-	// one for the compositor (comp)
-	let (session, comp) = UnixStream::pair().wrap_err("failed to create pair of unix sockets")?;
-	let (mut session_rx, _session_tx) = session.into_split();
-	// Convert our compositor socket to a non-blocking file descriptor.
-	let comp = {
-		let std_stream = comp
-			.into_std()
-			.wrap_err("failed to convert compositor unix stream to a standard unix stream")?;
-		std_stream
-			.set_nonblocking(false)
-			.wrap_err("failed to mark compositor unix stream as blocking")?;
-		OwnedFd::from(std_stream)
-	};
-	mark_as_not_cloexec(&comp).expect("Failed to mark fd as not cloexec");
+	// Create a pair of unix sockets for the ipc channel to the compositor
+	let (session_sock, comp_env) =
+		cosmic_comp_ipc::setup_socket().wrap_err("Failed to create compositor ipc sockets")?;
+	session_sock
+		.set_nonblocking(true)
+		.wrap_err("Failed to turn session sock nonblocking")?;
+	let (session_rx, _session_tx) = UnixStream::from_std(session_sock)
+		.wrap_err("Failed to convert unix stream")?
+		.into_split();
+	let mut session_rx = Box::pin(IpcWrapper(session_rx.compat()));
+	let mut env_tx = Some(env_tx);
 
 	Ok(tokio::spawn(async move {
-		// Create a new process handler for cosmic-comp, with our compositor socket's
-		// file descriptor as the `COSMIC_SESSION_SOCK` environment variable.
+		// Create a new process handler for cosmic-comp
 		process_manager
 			.start_process(
 				Process::new()
 					.with_executable(exec)
 					.with_args(args)
-					.with_env(env.into_iter().chain([(
-						"COSMIC_SESSION_SOCK".to_string(),
-						comp.as_raw_fd().to_string(),
-					)]))
+					.with_env(env.into_iter().chain(comp_env))
 					.with_on_exit(move |pman, _, err_code, _will_restart| {
 						let session_dbus_tx = session_dbus_tx.clone();
 						async move {
@@ -152,24 +105,11 @@ pub fn run_compositor(
 			)
 			.await
 			.expect("failed to launch compositor");
-		// Create a new state object for IPC purposes.
-		let mut ipc_state = IpcState {
-			env_tx: Some(env_tx),
-			..IpcState::default()
-		};
+
 		loop {
-			tokio::select! {
-				/*
-				exit = receive_event(&mut rx) => if exit.is_none() {
-					break;
-				},
-				*/
-				// Receive IPC messages from the process,
-				// exiting the loop if IPC errors.
-				result = receive_ipc(&mut ipc_state, &mut session_rx) => if let Err(err) = result {
-					error!("failed to receive IPC: {:?}", err);
-					break;
-				},
+			if let Err(err) = receive_ipc(&mut env_tx, session_rx.as_mut()).await {
+				error!("failed to receive IPC: {:?}", err);
+				break;
 			}
 		}
 		Result::<()>::Ok(())
