@@ -145,6 +145,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cosmic-comp-ipc"
+version = "0.1.0"
+source = "git+https://github.com/pop-os/cosmic-comp#f2beba6eccb7ae4d66c962dfb933fcaa2450166b"
+dependencies = [
+ "futures-util",
+ "rustix",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "cosmic-login1-zbus"
 version = "1.0.0"
 source = "git+https://github.com/pop-os/dbus-settings-bindings#6ccc9fbf034220f0142bc907a7d7513b49aba0e1"
@@ -159,6 +171,7 @@ version = "1.11.0"
 dependencies = [
  "a11y-zbus",
  "color-eyre",
+ "cosmic-comp-ipc",
  "cosmic-login1-zbus",
  "dirs",
  "freedesktop-desktop-entry",
@@ -296,8 +309,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d50a92467f8ba5dd6e3ee5d4bd04d73ab2e4e1c44474a0674821dfce14b79bc"
 dependencies = [
  "futures-core",
+ "futures-io",
  "futures-macro",
  "futures-task",
+ "memchr",
  "pin-project-lite",
  "slab",
 ]
@@ -994,6 +1009,7 @@ checksum = "e464cf451ba96ebfc6f9b6542f17ee8b8956e33f1e40d9690624e59d7a7f8a4b"
 dependencies = [
  "bytes",
  "futures-core",
+ "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",

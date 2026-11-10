@@ -5,7 +5,6 @@ extern crate tracing;
 mod a11y;
 mod comp;
 mod notifications;
-mod process;
 mod service;
 #[cfg(feature = "systemd")]
 mod systemd;

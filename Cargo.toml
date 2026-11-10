@@ -13,6 +13,7 @@ color-eyre = "0.6"
 futures-util = "0.3"
 a11y-zbus = { git = "https://github.com/pop-os/dbus-settings-bindings" }
 cosmic-login1-zbus = { git = "https://github.com/pop-os/dbus-settings-bindings", optional = true }
+cosmic-comp-ipc = { git = "https://github.com/pop-os/cosmic-comp" }
 freedesktop-desktop-entry = { version = "0.8", optional = true }
 shell-words = { version = "1.1.1", optional = true }
 dirs = { version = "7", optional = true }
@@ -38,7 +39,7 @@ tokio = { version = "1", features = [
 zbus_systemd = { version = "0.26201.0", optional = true, features = [
     "systemd1",
 ] }
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["compat"] }
 tracing = "0.1"
 tracing-journald = { version = "0.3", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
