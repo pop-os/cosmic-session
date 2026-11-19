@@ -6,12 +6,18 @@ use launch_pad::ProcessManager;
 use launch_pad::process::Process;
 use std::collections::HashMap;
 use std::pin::{Pin, pin};
+use std::time::Duration;
 use tokio::net::UnixStream;
-use tokio::net::unix::OwnedReadHalf;
-use tokio::sync::{mpsc, oneshot};
+use tokio::net::unix::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::sync::{mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
-use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
+use tokio_util::compat::{Compat, TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 use tokio_util::sync::CancellationToken;
+
+const HEARTBEAT: Duration = Duration::from_secs(2);
+const FROZEN: Duration = Duration::from_secs(10);
+
+pub type Alive = watch::Receiver<Option<bool>>;
 
 struct IpcWrapper(Compat<OwnedReadHalf>);
 
@@ -41,6 +47,7 @@ impl AsyncRead for IpcWrapper {
 
 async fn receive_ipc(
 	env_tx: &mut Option<oneshot::Sender<HashMap<String, String>>>,
+	answered: &watch::Sender<()>,
 	rx: Pin<&mut IpcWrapper>,
 ) -> Result<()> {
 	let msg = cosmic_comp_ipc::read_msg(rx)
@@ -51,9 +58,47 @@ async fn receive_ipc(
 			if let Some(env_tx) = env_tx.take() {
 				env_tx.send(variables).unwrap();
 			}
+			answered.send_replace(());
+		}
+		cosmic_comp_ipc::Message::Heartbeat => {
+			answered.send_replace(());
 		}
 	}
 	Ok(())
+}
+
+async fn heartbeat(
+	tx: OwnedWriteHalf,
+	mut answered: watch::Receiver<()>,
+	alive: watch::Sender<Option<bool>>,
+) {
+	if answered.changed().await.is_err() {
+		return;
+	}
+	let mut tx = tx.compat_write();
+	loop {
+		tokio::time::sleep(HEARTBEAT).await;
+		if cosmic_comp_ipc::write_msg(Pin::new(&mut tx), &cosmic_comp_ipc::Message::Heartbeat)
+			.await
+			.is_err()
+		{
+			return;
+		}
+		match tokio::time::timeout(FROZEN, answered.changed()).await {
+			Ok(Ok(())) => {}
+			Ok(Err(_)) => return,
+			Err(_) => {
+				if alive.borrow().is_none() {
+					return;
+				}
+				alive.send_replace(Some(false));
+				if answered.changed().await.is_err() {
+					return;
+				}
+			}
+		}
+		alive.send_if_modified(|alive| alive.replace(true) != Some(true));
+	}
 }
 
 pub fn run_compositor(
@@ -64,7 +109,7 @@ pub fn run_compositor(
 	_token: CancellationToken,
 	env_tx: oneshot::Sender<HashMap<String, String>>,
 	session_dbus_tx: mpsc::Sender<SessionRequest>,
-) -> Result<JoinHandle<Result<()>>> {
+) -> Result<(JoinHandle<Result<()>>, Alive)> {
 	let process_manager = process_manager.clone();
 	// Create a pair of unix sockets for the ipc channel to the compositor
 	let (session_sock, comp_env) =
@@ -72,13 +117,14 @@ pub fn run_compositor(
 	session_sock
 		.set_nonblocking(true)
 		.wrap_err("Failed to turn session sock nonblocking")?;
-	let (session_rx, _session_tx) = UnixStream::from_std(session_sock)
+	let (session_rx, session_tx) = UnixStream::from_std(session_sock)
 		.wrap_err("Failed to convert unix stream")?
 		.into_split();
 	let mut session_rx = Box::pin(IpcWrapper(session_rx.compat()));
 	let mut env_tx = Some(env_tx);
+	let (alive_tx, alive_rx) = watch::channel(None);
 
-	Ok(tokio::spawn(async move {
+	let handle = tokio::spawn(async move {
 		// Create a new process handler for cosmic-comp
 		process_manager
 			.start_process(
@@ -106,12 +152,15 @@ pub fn run_compositor(
 			.await
 			.expect("failed to launch compositor");
 
+		let (answered_tx, answered_rx) = watch::channel(());
+		tokio::spawn(heartbeat(session_tx, answered_rx, alive_tx));
 		loop {
-			if let Err(err) = receive_ipc(&mut env_tx, session_rx.as_mut()).await {
+			if let Err(err) = receive_ipc(&mut env_tx, &answered_tx, session_rx.as_mut()).await {
 				error!("failed to receive IPC: {:?}", err);
 				break;
 			}
 		}
 		Result::<()>::Ok(())
-	}))
+	});
+	Ok((handle, alive_rx))
 }
