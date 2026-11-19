@@ -147,7 +147,7 @@ dependencies = [
 [[package]]
 name = "cosmic-comp-ipc"
 version = "0.1.0"
-source = "git+https://github.com/pop-os/cosmic-comp#f2beba6eccb7ae4d66c962dfb933fcaa2450166b"
+source = "git+https://github.com/pop-os/cosmic-comp#553575b78514b6265ace556bc16eafb859604e4a"
 dependencies = [
  "futures-util",
  "rustix",
