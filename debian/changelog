@@ -1,3 +1,9 @@
+cosmic-session (1.12.0) noble; urgency=medium
+
+  * Epoch 1.12.0 version update
+
+ -- Michael Murphy <michael@mmurphy.dev>  Tue, 24 Nov 2026 17:25:46 +0100
+
 cosmic-session (1.11.0) noble; urgency=medium
 
   * Epoch 1.11.0 version update
